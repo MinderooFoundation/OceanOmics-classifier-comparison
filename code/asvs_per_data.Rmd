@@ -1,0 +1,39 @@
+---
+title: "Untitled"
+output: html_document
+date: "2023-09-26"
+---
+```{r}
+source(here::here('code/', 'helpers.R'))
+library(tidyverse)
+```
+
+```{r}
+data <- read_tsv('data/asvs_per_classifier.csv')
+data |> select(-zOTU)
+```
+
+```{r}
+data |> pivot_longer(-c(Database, Marker)) |> 
+  filter(Database != 'Random') |> 
+  mutate(name = factor(name, levels = rev(c('Genes', 'Species', 'ASVs', 'zOTU')))) |> 
+  rename(Type = name) |> 
+  ggplot(aes(x= Database, y = value, fill=Type)) + geom_col(position = 'dodge') + 
+  ylab('Count') + theme_minimal() + coord_flip() + facet_wrap(~Marker) +theme(legend.position="bottom")
+```
+
+
+The following was generated using `seqkit stats *fa > ../OceanOmics-classifier-comparison/data/asv_stats.csv`
+
+```{r}
+df <- read_table(here::here('data/', 'asv_stats.csv'))
+
+df |> mutate('Gene' = case_when(
+  str_detect(file, '16S') ~ '16S',
+  str_detect(file, 'CO1') ~ 'CO1',
+  str_detect(file, '12S') ~ '12S',
+  TRUE ~ 'Unknown'
+)) |> group_by(Gene) |> 
+  summarise(average_len = round(mean(avg_len)))
+```
+

@@ -1,0 +1,19 @@
+for l in ../*fasta; do base=$(basename $l); mkdir ${base}_index; mmseqs createdb $l ${base}_index/${base}MMSDB; done
+
+for l in *_index; do mmseqs createtaxdb $l/${l%%_index}MMSDB tmp --ncbi-tax-dump .. --tax-mapping-file ../${l%%_index}.taxids.txt ; rm -r tmp; done
+
+for x in ../*fa; do for l in *_index; do mmseqs easy-taxonomy ${x} ${l}/${l%%_index}MMSDB  `basename ${x}`_vs_`basename ${l}`_out tmp --min-seq-id 0.97 -e 1e-5  --search-type 3 --cov-mode 2 -c 1 --orf-filter 0 ; rm -r tmp; done; done
+
+python merge.py
+
+# once more with 100% identity
+for x in ../*fa; do for l in *_index; do mmseqs easy-taxonomy ${x} ${l}/${l%%_index}MMSDB  `basename ${x}`_vs_`basename ${l}`_out_100perc tmp --min-seq-id 1 -e 1e-5  --search-type 3 --cov-mode 2 -c 1 --orf-filter 0 ; rm -r tmp; done; done
+
+python merge100Perc.py
+
+# for CO1 again
+
+
+for x in ../*CO1*fa; do for l in *_index; do mmseqs easy-taxonomy ${x} ${l}/${l%%_index}MMSDB  `basename ${x}`_vs_`basename ${l}`_out tmp --min-seq-id 0.97 -e 1e-5  --search-type 3 --cov-mode 2 -c 1 --orf-filter 0 --alt-ali 1 ; rm -r tmp; done; done
+
+for x in ../*CO1*fa; do for l in *_index; do mmseqs easy-taxonomy ${x} ${l}/${l%%_index}MMSDB  `basename ${x}`_vs_`basename ${l}`_out_100perc tmp --min-seq-id 1 -e 1e-5  --search-type 3 --cov-mode 2 -c 1 --orf-filter 0 ; rm -r tmp; done; done

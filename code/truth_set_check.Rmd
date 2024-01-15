@@ -1,0 +1,446 @@
+---
+title: "Untitled"
+output: html_document
+date: "2023-09-27"
+---
+```{r}
+knitr::opts_chunk$set(warning = FALSE)
+
+source('code/helpers.R')
+
+library(tidyverse)
+```
+
+```{r}
+data <- targets::tar_read(truth_set_data)
+blast <- targets::tar_read(subsambled_blast_hits_data)
+kraken <- targets::tar_read(subsambled_kraken_hits_data) 
+
+kraken <- kraken |> separate(Type, c('Type', 'Kraken_confidence'), sep = '_') |> 
+  mutate(Kraken_confidence = as.numeric(Kraken_confidence))
+
+
+kraken_0.1 <- kraken |> filter(Kraken_confidence == 0.1)
+kraken <- kraken |> filter(Kraken_confidence == 0.0)
+nbc <- targets::tar_read(subsampled_nbc_hits_data)
+```
+
+
+```{r}
+data |> mutate(species = case_when(species != 'dropped' ~ 'OnSpeciesLevel',
+                                   TRUE ~ 'OnGenusLevel')) |> 
+  count(species)
+```
+
+
+```{r}
+blast |> right_join(data, by = c('Query','OTU'), suffix = c('Blast', 'Truth')) |> 
+  select(speciesBlast, speciesTruth) |> 
+  filter(speciesBlast != 'dropped',
+         speciesTruth != 'dropped') |> 
+  mutate(same = speciesBlast == speciesTruth) |> select(same) |> table()
+```
+
+True negatives:
+```{r}
+blast |> right_join(data, by = c('Query','OTU'), suffix = c('Blast', 'Truth')) |> 
+  select(speciesBlast, speciesTruth) |> 
+  filter(speciesBlast %in% c(NA, 'dropped'),
+         speciesTruth == 'dropped')
+```
+
+false negatives:
+
+```{r}
+
+blast |> right_join(data, by = c('Query','OTU'), suffix = c('Blast', 'Truth')) |> 
+  select(speciesBlast, speciesTruth) |> 
+  filter(speciesBlast %in% c(NA, 'dropped'),
+         speciesTruth != 'dropped')
+```
+```{r}
+blast |> right_join(data, by = c('Query','OTU'), suffix = c('Blast', 'Truth')) |> nrow()
+```
+
+So we have 137 false negatives, 96 true positives, 13 false positives, 3 true negatives.
+
+```{r}
+blast_accuracy <- 96 / (249) 
+blast_precision <- 96 / (96 + 13)
+blast_recall <- 96 / (96 + 137)
+blast_f1 <- 2 * (blast_precision * blast_recall) / (blast_precision + blast_recall)
+blast_f0.5 <- 1.25 * ( blast_precision * blast_recall / (0.25 * blast_precision + blast_recall))
+```
+
+# Kraken
+
+For Kraken:
+
+```{r}
+kraken |> right_join(data, by = c('Query','OTU'), suffix = c('Kraken', 'Truth')) 
+```
+True positives, False positives:
+
+```{r}
+kraken |> right_join(data, by = c('Query','OTU'), suffix = c('Kraken', 'Truth')) |> 
+  select(speciesKraken, speciesTruth) |> 
+  filter(!is.na(speciesKraken),
+         speciesTruth != 'dropped') |> 
+  mutate(same = speciesKraken == speciesTruth) |> select(same) |> table()
+```
+True Negatives:
+
+```{r}
+kraken |> right_join(data, by = c('Query','OTU'), suffix = c('Kraken', 'Truth')) |> 
+  select(speciesKraken, speciesTruth) |> 
+  filter(is.na(speciesKraken),
+         speciesTruth == 'dropped')
+```
+False negatives:
+
+```{r}
+kraken |> right_join(data, by = c('Query','OTU'), suffix = c('Kraken', 'Truth')) |> 
+  select(speciesKraken, speciesTruth) |> 
+  filter(is.na(speciesKraken),
+         speciesTruth != 'dropped')
+```
+
+106 True positives, 29 False Positives, 3 true negatives, 111 false negatives
+
+
+```{r}
+kraken_accuracy <- 106 / (106+29+3+111) 
+kraken_precision <- 106 / (106 + 29)
+kraken_recall <- 106 / (106 + 111)
+kraken_f1 <- 2 * (kraken_precision * kraken_recall) / (kraken_precision + kraken_recall)
+kraken_f0.5 <- 1.25 * ( kraken_precision * kraken_recall / (0.25 * kraken_precision + kraken_recall))
+
+```
+
+# Kraken 0.1
+
+True positives, False positives:
+
+```{r}
+kraken_0.1 |> right_join(data, by = c('Query','OTU'), suffix = c('Kraken', 'Truth')) |> 
+  select(speciesKraken, speciesTruth) |> 
+  filter(!is.na(speciesKraken),
+         speciesTruth != 'dropped') |> 
+  mutate(same = speciesKraken == speciesTruth) |> select(same) |> table()
+```
+True Negatives:
+
+```{r}
+kraken_0.1 |> right_join(data, by = c('Query','OTU'), suffix = c('Kraken', 'Truth')) |> 
+  select(speciesKraken, speciesTruth) |> 
+  filter(is.na(speciesKraken),
+         speciesTruth == 'dropped')
+```
+False negatives:
+
+```{r}
+kraken_0.1 |> right_join(data, by = c('Query','OTU'), suffix = c('Kraken', 'Truth')) |> 
+  select(speciesKraken, speciesTruth) |> 
+  filter(is.na(speciesKraken),
+         speciesTruth != 'dropped')
+```
+
+92 True positives, 15 False Positives, 3 true negatives, 139 false negatives
+
+
+```{r}
+kraken_0.1_accuracy <- 92 / (92+15+3+139) 
+kraken_0.1_precision <- 92 / (92 + 15)
+kraken_0.1_recall <- 92/ (92 + 139)
+kraken_0.1_f1 <- 2 * (kraken_0.1_precision * kraken_0.1_recall) / (kraken_0.1_precision + kraken_0.1_recall)
+kraken_0.1_mcc <- (92*3 - 15*139) / sqrt((92+15) * (92 + 139) * (3 + 15) * (3 + 139))
+kraken_0.1_f0.5 <- 1.25 * ( kraken_0.1_precision * kraken_0.1_recall / (0.25 * kraken_0.1_precision + kraken_0.1_recall))
+```
+
+# NBC
+
+
+```{r}
+nbc |>
+  right_join(data, by = c('Query','OTU'), suffix = c('Kraken', 'Truth')) 
+```
+True positives, False positives:
+
+```{r}
+nbc |> right_join(data, by = c('Query','OTU'), suffix = c('NBC', 'Truth')) |> 
+  select(speciesNBC, speciesTruth) |> 
+  filter(!is.na(speciesNBC),
+         speciesTruth != 'dropped') |> 
+  mutate(same = speciesNBC == speciesTruth) |> select(same) |> table()
+```
+True Negatives:
+
+```{r}
+nbc |> right_join(data, by = c('Query','OTU'), suffix = c('NBC', 'Truth')) |> 
+  select(speciesNBC, speciesTruth) |> 
+  filter(is.na(speciesNBC),
+         speciesTruth == 'dropped')
+```
+False negatives:
+
+```{r}
+nbc |> right_join(data, by = c('Query','OTU'), suffix = c('NBC', 'Truth')) |> 
+  select(speciesNBC, speciesTruth) |> 
+  filter(is.na(speciesNBC),
+         speciesTruth != 'dropped')
+```
+
+96 True positives, 31 False Positives, 3 true negatives, 119 false negatives
+
+
+```{r}
+nbc_accuracy <- 96 / (96+31+3+119) 
+nbc_precision <- 96 / (96 + 31)
+nbc_recall <- 96 / (96 + 119)
+nbc_f1 <- 2 * (nbc_precision * nbc_recall) / (nbc_precision + nbc_recall)
+nbc_mcc <- (96*3 - 31*119) / sqrt((96 + 31) * (96 + 119) * (3 + 31) * (3 + 119))
+nbc_f0.5 <- 1.25 * ( nbc_precision * nbc_recall / (0.25 * nbc_precision + nbc_recall))
+
+```
+
+# summary
+
+```{r}
+df <- tibble(names = c('blast', 'kraken', 'kraken_0.1', 'nbc'), f1 = c(blast_f1, kraken_f1, kraken_0.1_f1, nbc_f1), f0.5 = c(blast_f0.5, kraken_f0.5, kraken_0.1_f0.5, nbc_f0.5), recall = c(blast_recall, kraken_recall, kraken_0.1_recall, nbc_recall), accuracy = c(blast_accuracy, kraken_accuracy, kraken_0.1_accuracy, nbc_accuracy), precision = c(blast_precision, kraken_precision, kraken_0.1_precision, nbc_precision))
+df
+```
+
+```{r}
+df |> pivot_longer(-names, names_to = 'Measure', values_to='Score') |> 
+  rename(Tool = names) |> 
+  ggplot(aes(x = factor(Measure, levels=c('accuracy', 'precision', 'recall', 'f1', 'f0.5')),  color = Tool, fill = Tool, y = Score, group = Tool)) + geom_point() + geom_line() + 
+  ylim(c(0, 1)) + theme_minimal() + theme(legend.position="bottom") + xlab('Measure')
+```
+
+```{r}
+kraken_0.1 |> right_join(data, by = c('Query','OTU'), suffix = c('Kraken_0.1', 'Truth')) |> 
+  mutate(Type = str_replace(Type, 'Kraken', replacement = 'Kraken_0.1')) |> 
+  right_join(kraken |> select(Query, OTU, species), by = c('Query', 'OTU')) |> 
+  rename(species_Kraken = species) |> 
+  right_join(blast |> select(Query, OTU, species), by = c('Query', 'OTU')) |> 
+  rename(species_Blast = species) |> select(speciesTruth, speciesKraken_0.1, species_Kraken, species_Blast) |> 
+  mutate(species_Blast = na_if(species_Blast, 'dropped'))
+```
+
+
+
+
+
+
+
+# MORE
+
+
+```{r}
+
+data <- targets::tar_read(truth_set_data)
+blast_thirty <- targets::tar_read(thirty_subsambled_blast_hits_data)
+kraken_thirty <- targets::tar_read(thirty_subsampled_kraken_hits_data)
+
+kraken_thirty <- kraken_thirty |> separate(Type, c('Type', 'Kraken_confidence'), sep='_') |> 
+  mutate(Kraken_confidence = as.numeric(Kraken_confidence))
+
+kraken_0.1_thirty <- kraken_thirty |> filter(Kraken_confidence == 0.1)
+kraken_thirty <-  kraken_thirty |> filter(Kraken_confidence == 0.0)
+nbc_thirty <- targets::tar_read(thirty_subsampled_nbc_hits_data) 
+```
+
+
+```{r}
+data |> mutate(species = case_when(species != 'dropped' ~ 'OnSpeciesLevel',
+                                   TRUE ~ 'OnGenusLevel')) |> 
+  count(species)
+```
+
+
+```{r}
+blast_thirty |> right_join(data, by = c('Query','OTU'), suffix = c('Blast', 'Truth')) |> 
+  select(speciesBlast, speciesTruth) |> 
+  filter(speciesBlast != 'dropped',
+         speciesTruth != 'dropped') |> 
+  mutate(same = speciesBlast == speciesTruth) |> select(same) |> table()
+```
+
+True negatives:
+```{r}
+blast_thirty |> right_join(data, by = c('Query','OTU'), suffix = c('Blast', 'Truth')) |> 
+  select(speciesBlast, speciesTruth) |> 
+  filter(speciesBlast %in% c(NA, 'dropped'),
+         speciesTruth == 'dropped')
+```
+
+false negatives:
+
+```{r}
+
+blast_thirty |> right_join(data, by = c('Query','OTU'), suffix = c('Blast', 'Truth')) |> 
+  select(speciesBlast, speciesTruth) |> 
+  filter(speciesBlast %in% c(NA, 'dropped'),
+         speciesTruth != 'dropped')
+```
+```{r}
+blast_thirty |> right_join(data, by = c('Query','OTU'), suffix = c('Blast', 'Truth')) |> nrow()
+```
+
+So we have 213 false negatives, 27 true positives, 6 false positives, 3 true negatives.
+
+```{r}
+blast_accuracy <- 27 / (249) 
+blast_precision <- 27 / (27 + 6)
+blast_recall <- 27 / (27 + 213)
+blast_f1 <- 2 * (blast_precision * blast_recall) / (blast_precision + blast_recall)
+blast_f0.5 <- 1.25 * ( blast_precision * blast_recall / (0.25 * blast_precision + blast_recall))
+```
+
+# Kraken
+
+For Kraken:
+
+```{r}
+kraken_thirty |> right_join(data, by = c('Query','OTU'), suffix = c('Kraken', 'Truth')) 
+```
+True positives, False positives:
+
+```{r}
+kraken_thirty |> right_join(data, by = c('Query','OTU'), suffix = c('Kraken', 'Truth')) |> 
+  select(speciesKraken, speciesTruth) |> 
+  filter(!is.na(speciesKraken),
+         speciesTruth != 'dropped') |> 
+  mutate(same = speciesKraken == speciesTruth) |> select(same) |> table()
+```
+True Negatives:
+
+```{r}
+kraken_thirty |> right_join(data, by = c('Query','OTU'), suffix = c('Kraken', 'Truth')) |> 
+  select(speciesKraken, speciesTruth) |> 
+  filter(is.na(speciesKraken),
+         speciesTruth == 'dropped')
+```
+False negatives:
+
+```{r}
+kraken_thirty |> right_join(data, by = c('Query','OTU'), suffix = c('Kraken', 'Truth')) |> 
+  select(speciesKraken, speciesTruth) |> 
+  filter(is.na(speciesKraken),
+         speciesTruth != 'dropped')
+```
+
+33 True positives, 65 False Positives, 3 true negatives, 148 false negatives
+
+
+```{r}
+kraken_accuracy <- 33 / (33+65+3+148) 
+kraken_precision <- 33 / (33 + 65)
+kraken_recall <- 33 / (33 + 148)
+kraken_f1 <- 2 * (kraken_precision * kraken_recall) / (kraken_precision + kraken_recall)
+kraken_f0.5 <- 1.25 * ( kraken_precision * kraken_recall / (0.25 * kraken_precision + kraken_recall))
+
+```
+
+# Kraken 0.1
+
+For Kraken:
+
+```{r}
+kraken_0.1_thirty |> right_join(data, by = c('Query','OTU'), suffix = c('Kraken', 'Truth')) 
+```
+True positives, False positives:
+
+```{r}
+kraken_0.1_thirty |> right_join(data, by = c('Query','OTU'), suffix = c('Kraken', 'Truth')) |> 
+  select(speciesKraken, speciesTruth) |> 
+  filter(!is.na(speciesKraken),
+         speciesTruth != 'dropped') |> 
+  mutate(same = speciesKraken == speciesTruth) |> select(same) |> table()
+```
+True Negatives:
+
+```{r}
+kraken_0.1_thirty |> right_join(data, by = c('Query','OTU'), suffix = c('Kraken', 'Truth')) |> 
+  select(speciesKraken, speciesTruth) |> 
+  filter(is.na(speciesKraken),
+         speciesTruth == 'dropped')
+```
+False negatives:
+
+```{r}
+kraken_0.1_thirty |> right_join(data, by = c('Query','OTU'), suffix = c('Kraken', 'Truth')) |> 
+  select(speciesKraken, speciesTruth) |> 
+  filter(is.na(speciesKraken),
+         speciesTruth != 'dropped')
+```
+
+29 True positives, 11 False Positives, 3 true negatives, 206 false negatives
+
+
+```{r}
+kraken_0.1_accuracy <- 29 / (29+11+3+206) 
+kraken_0.1_precision <- 29 / (29 + 11)
+kraken_0.1_recall <- 29 / (29 + 206)
+kraken_0.1_f1 <- 2 * (kraken_0.1_precision * kraken_0.1_recall) / (kraken_0.1_precision + kraken_0.1_recall)
+kraken_0.1_f0.5 <- 1.25 * ( kraken_0.1_precision * kraken_0.1_recall / (0.25 * kraken_0.1_precision + kraken_0.1_recall))
+```
+# NBC
+
+
+```{r}
+nbc_thirty |>
+  right_join(data, by = c('Query','OTU'), suffix = c('Kraken', 'Truth')) 
+```
+True positives, False positives:
+
+```{r}
+nbc_thirty |> right_join(data, by = c('Query','OTU'), suffix = c('NBC', 'Truth')) |> 
+  select(speciesNBC, speciesTruth) |> 
+  filter(!is.na(speciesNBC),
+         speciesTruth != 'dropped') |> 
+  mutate(same = speciesNBC == speciesTruth) |> select(same) |> table()
+```
+True Negatives:
+
+```{r}
+nbc_thirty |> right_join(data, by = c('Query','OTU'), suffix = c('NBC', 'Truth')) |> 
+  select(speciesNBC, speciesTruth) |> 
+  filter(is.na(speciesNBC),
+         speciesTruth == 'dropped')
+```
+False negatives:
+
+```{r}
+nbc_thirty |> right_join(data, by = c('Query','OTU'), suffix = c('NBC', 'Truth')) |> 
+  select(speciesNBC, speciesTruth) |> 
+  filter(is.na(speciesNBC),
+         speciesTruth != 'dropped')
+```
+
+28 True positives, 15 False Positives, 3 true negatives, 203 false negatives
+
+
+```{r}
+nbc_accuracy <- 28 / (28+15+3+203) 
+nbc_precision <- 28 / (28+15)
+nbc_recall <- 28 / (28 + 203)
+nbc_f1 <- 2 * (nbc_precision * nbc_recall) / (nbc_precision + nbc_recall)
+nbc_f0.5 <- 1.25 * ( nbc_precision * nbc_recall / (0.25 * nbc_precision + nbc_recall))
+
+```
+
+# summary
+
+```{r}
+df <- tibble(names = c('blast', 'kraken', 'kraken_0.1', 'nbc'), f1 = c(blast_f1, kraken_f1, kraken_0.1_f1, nbc_f1), f0.5 = c(blast_f0.5, kraken_f0.5, kraken_0.1_f0.5, nbc_f0.5), recall = c(blast_recall, kraken_recall, kraken_0.1_recall, nbc_recall), accuracy = c(blast_accuracy, kraken_accuracy, kraken_0.1_accuracy, nbc_accuracy), precision = c(blast_precision, kraken_precision, kraken_0.1_precision, nbc_precision))
+df
+```
+
+```{r}
+df |> pivot_longer(-names, names_to = 'Measure', values_to='Score') |> 
+  rename(Tool = names) |> 
+  ggplot(aes(x = factor(Measure, levels=c('accuracy', 'precision', 'recall', 'f1', 'f0.5')),  color = Tool, fill = Tool, y = Score, group = Tool)) + geom_point() + geom_line() + 
+  ylim(c(0, 1)) + theme_minimal() + theme(legend.position="bottom") + xlab('Measure') + ggtitle('70% of families removed')
+```
+

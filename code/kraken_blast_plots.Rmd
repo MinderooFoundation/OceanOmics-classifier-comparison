@@ -1,0 +1,70 @@
+---
+title: "Untitled"
+output: html_document
+date: "2023-09-26"
+---
+```{r}
+source('code/helpers.R')
+library(tidyverse)
+library(ggvenn)
+subsambled_kraken_hits_data <- targets::tar_read(subsambled_kraken_hits_data)
+subsambled_blast_hits_data <- targets::tar_read(subsambled_blast_hits_data)
+```
+
+
+```{r}
+default_kraken <- subsambled_kraken_hits_data |> filter(Kraken_confidence == 0.0) |> mutate(Type = 'Kraken_0.0')
+```
+
+```{r}
+stricter_kraken <- subsambled_kraken_hits_data |> filter(Kraken_confidence == 0.1) |> mutate(Type='Kraken_0.1')
+```
+
+```{r}
+strictest_kraken <- subsambled_kraken_hits_data |> filter(Kraken_confidence == 0.2) |> mutate(Type='Kraken_0.2')
+```
+
+```{r}
+both <- rbind( default_kraken |> select(Type, Query, Subject, species), subsambled_blast_hits_data |> select(Type, Query, Subject, species),
+               stricter_kraken |> select(Type, Query, Subject, species), strictest_kraken |> select(Type, Query, Subject, species))
+```
+
+```{r}
+both <- both |> mutate(species = case_when ( species == 'dropped' ~ 'NoHit', 
+                                     is.na(species) ~ 'NoHit',
+                                     TRUE ~ 'Hit')) |> 
+  mutate(Query = case_when(Query == "make_12s_16s_simulated_reads_5-BetterDatabaseARTSimulation_runEDNAFLOW_16S_Lulu_RESULTS_dada2_asv.fa" ~ '16S',
+                           TRUE ~ '12S'))
+```
+
+
+```{r}
+both |> group_by(Type, Query, Subject) |> count(species) |> 
+  ggplot(aes(x = Query, y = n, fill = species), ) + geom_col(position = 'dodge') + facet_wrap(~Type, nrow = 1) + 
+  theme_minimal()
+```
+
+
+```{r}
+temp <- rbind( default_kraken |> select(Type, Query, Subject, species), subsambled_blast_hits_data |> select(Type, Query, Subject, species),
+               stricter_kraken |> select(Type, Query, Subject, species), strictest_kraken |> select(Type, Query, Subject, species)) |> group_by(Type) |>  mutate(Query = case_when(Query == "make_12s_16s_simulated_reads_5-BetterDatabaseARTSimulation_runEDNAFLOW_16S_Lulu_RESULTS_dada2_asv.fa" ~ '16S',
+                           TRUE ~ '12S'))
+  
+temp_12S <- temp |> filter(Query == '12S') |> summarise(species = unique(species))
+temp_16S <- temp |> filter(Query == '16S') |> summarise(species = unique(species))
+spec_list_12S <- split(temp_12S$species, temp_12S$Type)  
+spec_list_16S <- split(temp_16S$species, temp_16S$Type)  
+
+```
+
+```{r}
+venn_plot <- ggvenn(spec_list_12S)
+venn_plot$layers[[3]]$data$x <- c(-1, -0.8, 0.8, 1)
+venn_plot + ggtitle('12S')
+```
+```{r}
+venn_plot <- ggvenn(spec_list_16S)
+venn_plot$layers[[3]]$data$x <- c(-1, -0.8, 0.8, 1)
+venn_plot + ggtitle('16S')
+```
+

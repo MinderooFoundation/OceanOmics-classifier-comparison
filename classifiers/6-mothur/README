@@ -1,0 +1,18 @@
+# making the taxonomy IDs
+for l in ../*fasta; do grep '>' $l | cut -f 1,2 -d ' '| sed 's/ /\t/' | sed 's/>//' | taxonkit lineage -i 2 > `basename $l`_mothur_taxids.txt ; done
+# reformat for MOTHUR - remove spaces from lineage
+python fixForMothur.py
+
+# fake the count files
+for l in ../*fa; do python fakeTable.py $l > $(basename $l)_table; done
+
+# make the table files
+# for one file
+#mothur "#make.shared(count=make_12s_16s_simulated_reads_8-Rottnest_runEDNAFLOW_12S_RESULTS_dada2_asv.table,label=asv)"
+for l in *_table; do; mothur "#make.shared(count=$l,label=asv)"; done
+
+# classify
+
+for quer in *fa; do; for ref in ../*fasta; do mkdir -p $(basename $quer)_$(basename $ref); mothur "#set.dir(output=$(basename $quer)_$(basename $ref)); classify.seqs(fasta=$quer, count=${quer}_table, reference=$ref, taxonomy=$(basename $ref)_mothur_taxidsmothur.txt); classify.otu(taxonomy=${ref}_mothur_taxidsmothur.txt, list=${quer%%.fa}.asv.list, count=${quer}_table)"; done; done
+
+python putAllTogether.py

@@ -1,0 +1,26 @@
+for l in ../../runClassifiers/*/all_results.tsv; do tool=$(echo $l | cut -f 4 -d '/'); cp $l ${tool}_$(basename $l); done
+for l in *tsv; do gzip -f $l; done
+
+# I then manually deleted the Kraken output and copied a filtered version in
+rm 7-kraken_all_results.tsv.gz
+cp ../../runClassifiers/7-kraken/all_results.subsetConfidence.tsv .
+mv all_results.subsetConfidence.tsv 7-Kraken_all_results.subsetConfidence.tsv
+gzip -f 7-Kraken_all_results.subsetConfidence.tsv
+
+cp ../../runClassifiers/1-BLAST/100perc_all_results.tsv .
+mv 100perc_all_results.tsv 1.1-BLAST100Perc_all_results.tsv
+gzip -f 1.1-BLAST100Perc_all_results.tsv
+
+cp ../../runClassifiers/2-mmseqs2/100perc_all_results.tsv 2.1-mmseqs2100Perc_all_results.tsv
+gzip -f 2.1-mmseqs2100Perc_all_results.tsv
+
+ cp ../../runClassifiers/12-TheNucleotideTransformer/all_together.csv 12-TNT_all_results.tsv
+gzip 12-TNT*
+
+#  moved TNT to Not_used
+
+# then added DADA2
+cp ../../runClassifiers/13-DADA2/assignSpecies/all_results.tsv 13-DADA2Species_all_results.tsv
+gzip 13-DADA2Species_all_results.tsv
+cp ../../runClassifiers/13-DADA2/assignTaxonomy/all_results.tsv 13-DADA2Taxonomy_all_results.tsv
+gzip 13-DADA2Taxonomy_all_results.tsv

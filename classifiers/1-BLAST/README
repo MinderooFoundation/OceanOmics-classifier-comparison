@@ -1,0 +1,12 @@
+
+for x in ../*.fa; do for l in ../*fasta; do echo blastn -query $x -db $l -outfmt  \"6 qseqid sseqid staxids sscinames scomnames sskingdoms pident length qlen slen mismatch gapopen gaps qstart qend sstart send stitle evalue bitscore qcovs qcovhsp\"  -out $(basename $x)_vs_$(basename $l)_out; done; done > cmds.txt
+parallel -P 100 < cmds.txt
+
+for l in ../*fa; do python fakeTable.py $l > $(basename $l)_table; done
+
+for l in *fa_table; do base=$(basename $l); for x in  ${base%%_table}*out; do echo $x $l ; python runAssign_collapsedTaxonomy.py $l $x 100 97 1 ${x}_LCA.tsv; done ; done
+python combine.py > all_results.tsv
+
+for l in *fa_table; do base=$(basename $l); for x in  ${base%%_table}*out; do echo $x $l ; python runAssign_collapsedTaxonomy.py $l $x 100 100 1 100perc_${x}_LCA.tsv; done ; done
+
+python combine100perc.py > 100perc_all_results.tsv

@@ -1,0 +1,58 @@
+---
+title: "Correctness report"
+output: html_document
+date: "2023-09-26"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE)
+
+source(here::here('code', 'helpers.R'))
+
+library(tidyverse)
+```
+
+```{r}
+df <- targets::tar_read(counted_correctness)
+```
+
+On average, classifiers assigned a correct species label to `r df |> filter(CorrectSpecies == 'Correct species') |> pull(total) |> mean() |> round()` `r df |> filter(CorrectSpecies == 'Correct species') |> pull(perc) |> mean() |> round()`% of ASVs, ranging from `r df |> filter(CorrectSpecies == 'Correct species') |> pull(perc) |> min() |> round()` X (X%)
+
+```{r}
+df |> filter(CorrectSpecies == 'Correct species') |> select(-c(all_asvs, missing, new_col, newcol2)) |> arrange(desc(perc)) |> head(5)
+```
+
+```{r}
+df |> filter(CorrectSpecies == 'Correct species') |> select(-c(all_asvs, missing, new_col, newcol2)) |> arrange(desc(perc)) |> tail(5)
+
+```
+```{r}
+df |> filter(Classifier == 'Kraken2_0.0', Query == 'Lutjanidae', Subject == '16S') |>  select(-c(all_asvs, missing, new_col, newcol2))
+
+```
+
+```{r}
+4 + 8 + 10
+```
+
+
+```{r}
+df |> filter(Classifier == 'Kraken2_0.05', Query == 'Lutjanidae', Subject == '16S') |>  select(-c(all_asvs, missing, new_col, newcol2))
+
+```
+
+```{r}
+df |> filter(Query  == 'Lutjanidae', CorrectSpecies == 'Correct species', Subject == 'CO1') |>  select(-c(all_asvs, missing, new_col, newcol2)) |> arrange(desc(perc)) |> head()
+
+```
+
+
+```{r}
+df |> filter(Query  == 'Lutjanidae', CorrectSpecies == 'Correct species', Subject == '12S') |>  select(-c(all_asvs, missing, new_col, newcol2)) |> arrange(desc(perc)) |> head()
+
+```
+
+```{r}
+df |> filter(Query  == 'Lutjanidae', CorrectSpecies == 'Correct species', Subject == '16S') |>  select(-c(all_asvs, missing, new_col, newcol2)) |> arrange(desc(perc)) |> head()
+```
+

@@ -1,0 +1,15 @@
+file                                                                                                    format  type  num_seqs  sum_len  min_len  avg_len  max_len
+KWest_16S_PooledTrue.fa                                                                                 FASTA   DNA        544  111,105      100    204.2      239
+make_12s_16s_simulated_reads_5-BetterDatabaseARTSimulation_runEDNAFLOW_12S_Lulu_RESULTS_dada2_asv.fa    FASTA   DNA         99   16,984      166    171.6      189
+make_12s_16s_simulated_reads_5-BetterDatabaseARTSimulation_runEDNAFLOW_12S_noLulu_RESULTS_dada2_asv.fa  FASTA   DNA         99   16,984      166    171.6      189
+make_12s_16s_simulated_reads_5-BetterDatabaseARTSimulation_runEDNAFLOW_16S_Lulu_RESULTS_dada2_asv.fa    FASTA   DNA         99   20,009      149    202.1      232
+make_12s_16s_simulated_reads_5-BetterDatabaseARTSimulation_runEDNAFLOW_16S_noLulu_RESULTS_dada2_asv.fa  FASTA   DNA         99   20,009      149    202.1      232
+make_12s_16s_simulated_reads_5-BetterDatabaseARTSimulation_runEDNAFLOW_CO1_RESULTS_dada2_asv.fa         FASTA   DNA         99   25,641      257      259      260
+make_12s_16s_simulated_reads_6-fakeGenes_GreenGenes_RESULTS_dada2_asv.fa                                FASTA   DNA         99   16,960      171    171.3      186
+make_12s_16s_simulated_reads_6-fakeGenes_Random_RESULTS_dada2_asv.fa                                    FASTA   DNA        100   17,000      170      170      170
+make_12s_16s_simulated_reads_7-Lutjanids_Mock_runEDNAFlow_12S_RESULTS_dada2_asv.fa                      FASTA   DNA         24    4,073      168    169.7      173
+make_12s_16s_simulated_reads_7-Lutjanids_Mock_runEDNAFlow_16S_RESULTS_dada2_asv.fa                      FASTA   DNA         27    5,485      200    203.1      206
+make_12s_16s_simulated_reads_7-Lutjanids_Mock_runEDNAFlow_CO1_RESULTS_dada2_asv.fa                      FASTA   DNA         27    6,990      257    258.9      260
+make_12s_16s_simulated_reads_8-Rottnest_Mock_runEDNAFlow_CO1_RESULTS_dada2_asv.fa                       FASTA   DNA        117   30,300      257      259      260
+make_12s_16s_simulated_reads_8-Rottnest_runEDNAFLOW_12S_RESULTS_dada2_asv.fa                            FASTA   DNA        102   17,457      165    171.1      183
+make_12s_16s_simulated_reads_8-Rottnest_runEDNAFLOW_16S_RESULTS_dada2_asv.fa                            FASTA   DNA        112   22,957      187      205      232

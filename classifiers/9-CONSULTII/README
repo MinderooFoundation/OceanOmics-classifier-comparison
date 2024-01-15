@@ -1,0 +1,23 @@
+
+# first, count k-mers
+conda activate jelly
+
+for l in ../*fasta; do jellyfish count -m 35 -s 100M -t 24 -C $l -o $(basename $l)_counts.jf; done
+for l in *counts.jf; do jellyfish dump $l > ${l%%_counts.jf}_kmer_lst.fa; done
+for l in *lst.fa; do jellyfish count -m 32 -s 100M -t 24 -C $l -o ${l%%.fa}_counts.jf ; done
+for l in *lst_counts.jf; do jellyfish dump $l > ${l%%.jf}_lst.fa ; done
+
+rm *kmer_lst.fa
+rm *counts.jf
+
+for l in *lst.fa; do ./CONSULT-II/consult_map -i $l -o ${l}_db; done 
+
+python CONSULT-II/scripts/construct_taxonomy_lookup.py --input-path ~/.taxonkit/nodes.dmp --output-dir taxonomy_lookup --from-taxonomy-database
+# now we have one folder per database. new problem: we need one file per species.
+# This script makes the folder with fasta files per species
+python makeSpeciesFolders.py
+for l in *perSpecies; do ./CONSULT-II/consult_search -q $l -i ${l%%perSpecies}kmer_lst_counts_lst.fa_db -o . --taxonomy-lookup-path taxonomy_lookup/taxonomy_lookup_subset --filename-map-path ${l%%_perSpecies}taxids.txt --init-ID; done
+
+for l in *perSpecies; do ./CONSULT-II/consult_search -q $l -i ${l%%perSpecies}kmer_lst_counts_lst.fa_db -o . --taxonomy-lookup-path taxonomy_lookup/taxonomy_lookup_subset --filename-map-path ${l%%_perSpecies}taxids.txt --update-ID; ; done
+
+for l in ../*fa; do base=$(basename $l); seqtk seq -F '#' $l > ${base}fake.fq; done

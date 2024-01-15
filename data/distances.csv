@@ -1,0 +1,12 @@
+Classifier	DeepLearning	K-mers	NBC	LocalAlignment	LCA	ML	UsesAA
+DNABert2	1	0	0	0	0	1	0
+Mothur	0	1	1	0	0	1	0
+Blast	0	0	0	1	1	0	0
+MMSeqs2	0	1	0	1	1	0	0
+Kraken2	0	1	0	0	1	0	0
+Vsearch	0	0	0	0	1	0	0
+CustomNBC	0	1	1	0	0	1	0
+Qiime2NBC	0	1	1	0	0	1	0
+Metabuli	0	1	0	0	1	0	1
+ConsultII	0	1	0	0	0	0	0
+NeuroSEED	1	1	0	0	0	1	0

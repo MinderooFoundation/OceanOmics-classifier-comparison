@@ -1,0 +1,17 @@
+conda env create -f trans.yml
+
+# this python script makes all the training csvs
+python makeTrainingCSVs.py
+# make the CSVs for testing
+python makeTestingCSVs.py
+# ran all the training on Pawsey
+sbatch trainAll.sh # this calls trainAllModels.py
+
+# ran the testingon the models
+srun -N 1 -n 1 -c 8 --gpus-per-node=1 python test.py
+
+# fix my own mess
+python fixLabelCSVs.py
+
+# make the big table
+python3 mergeAndTax.py

@@ -1,0 +1,6 @@
+
+python trainModels.py
+
+python naiveBayesClassify.py
+
+# fixed the extra strings in database/query manually

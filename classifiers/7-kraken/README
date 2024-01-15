@@ -1,0 +1,32 @@
+# download one taxonomy DB, 50GB
+for l in ../*fasta; do kraken2-build --download-taxonomy --db `basename $l`_db ; break; done
+# symbolic link for the others
+for l in ../*fasta; do mkdir `basename $l`_db; cd `basename $l`_db/; mkdir taxonomy; cd taxonomy; for a in ../../12s_v010_final.fasta_db/taxonomy/*; do ln -s $a ; done; cd /home/pbayer/Data/runClassifiers/7-kraken; done
+
+# need to rename the queries in the format >sequence16|kraken:taxid|32630  Adapter sequence
+python renameDBs.py
+# add to the libraries
+for l in *db; do kraken2-build --add-to-library ${l/_db/_kraken.fasta} --db ${l}; done
+
+# now build the libraries
+for l in *db; do kraken2-build --build --db $l; done
+
+for i in 0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 ; do echo 'CUTOFF' $i; for l in *db ; do for x in ../*fa; do echo 'REFERENCE' $l; echo 'QUERY' $x; kraken2 --db $l $x --confidence $i --output $(basename $x)_${i}_${l}_out;  done; done; done  &> cutoff_test_results.txt
+
+for l in *out; do taxonkit lineage -i 3 $l | taxonkit reformat -i 6  >${l}_fixed.tsv; done
+
+python putAllTogether.py
+
+# went back and added smaller stepsize
+for i in 0.0 0.01 0.02 0.03 0.04 0.05 0.06 0.07 0.08 0.09; do echo 'CUTOFF' $i; for l in *db ; do for x in ../*fa; do echo 'REFERENCE' $l; echo 'QUERY' $x; kraken2 --db $l $x --confidence $i --output $(basename $x)_${i}_${l}_out;  done; done; done  &> cutoff_test_results.sub0.1.txt
+
+for l in *out; do if [[ ! -f ${l}_fixed.tsv ]] then; taxonkit lineage -i 3 $l | taxonkit reformat -i 6  >${l}_fixed.tsv ; fi; done
+
+python putAllTogether.py
+
+# a final one with all useful stepsizes
+for i in 0.0 0.01 0.02 0.03 0.04 0.05 0.06 0.07 0.08 0.09 0.1; do echo 'CUTOFF' $i; for l in *db ; do for x in ../*fa; do echo 'REFERENCE' $l; echo 'QUERY' $x; kraken2 --db $l $x --confidence $i --output $(basename $x)_${i}_${l}_out;  done; done; done  &> cutoff_test_results.sub0.1.again.txt
+
+python putAllTogether.py
+
+grep -w -e '^Type' -e '^Kraken_0.1' -e '^Kraken_0.05' -e '^Kraken_0.0' all_results.tsv > all_results.subsetConfidence.tsv

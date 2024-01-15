@@ -1,0 +1,18 @@
+
+# do the query fastas
+for l in ../*fa; do qiime tools import --type 'FeatureData[Sequence]' --input-path $l --output-path `basename ${l}`.qza; done
+# do the reference fastas
+for l in ../*fasta; do qiime tools import --type 'FeatureData[Sequence]' --input-path $l --output-path `basename ${l}`.qza; done
+# add taxonomy
+for l in ../*fasta; do grep '>' $l | cut -f 1,2 -d ' ' | sed 's/ /\t/' | sed 's/>//' > `basename ${l}`_taxids.txt; done 
+for l in *taxids.txt; do qiime tools import --input-format HeaderlessTSVTaxonomyFormat   --type 'FeatureData[Taxonomy]'  --input-path $l --output-path ${l}.qza; done
+
+for l in *taxids.txt.qza; do qiime feature-classifier fit-classifier-naive-bayes --i-reference-taxonomy $l --i-reference-reads ${l%%_taxids.txt.qza}.qza --o-classifier ${l}_classifier; done
+
+
+for l in *classifier.qza; do for x in *fa.qza; do qiime feature-classifier classify-sklearn --i-reads $x --i-classifier $l --o-classification ${l}_${x}_classify_out; done ; done
+
+for l in *classify_out.qza; do qiime tools export --input-path $l --output-path ${l}_RESULTS; done
+
+for l in *RESULTS/*taxonomy*; do if [[ ! -f ${l%%tsv}_fixed.tsv ]]; then echo taxonkit lineage -i 2 $l \| taxonkit reformat -i 4 \> ${l%%tsv}_fixed.tsv; fi; done > cmds.txt
+parallel -P 50 < cmds.txt

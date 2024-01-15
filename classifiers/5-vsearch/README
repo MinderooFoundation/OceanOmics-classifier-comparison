@@ -1,0 +1,17 @@
+for l in ../3-Qiime2/*fa.qza; for x in ../3-Qiime2/*fasta.qza; do qiime feature-classifier classify-consensus-vsearch --p-perc-identity 0.97 --p-query-cov 1 --i-query $l --i-reference-reads ${x} --i-reference-taxonomy ${x%%.qza}_taxids.txt.qza --o-classification `basename $x`_`basename $l`_OUT --p-threads 50 --verbose; done
+
+for l in *OUT.qza; do qiime tools export --input-path $l --output-path ${l}_RESULTS; done
+
+for l in *RESULTS/*taxonomy*; do echo taxonkit lineage -i 2 $l \| taxonkit reformat -i 4 \> ${l%%tsv}_fixed.tsv; done > cmds.txt
+parallel -P 50 < cmds.txt
+
+python putAllTogether.py
+
+# for CO1 again
+for l in ../3-Qiime2/*CO1*fa.qza; for x in ../3-Qiime2/*fasta.qza; do qiime feature-classifier classify-consensus-vsearch --p-perc-identity 0.97 --p-query-cov 0.8 --i-query $l --i-reference-reads ${x} --i-reference-taxonomy ${x%%.qza}_taxids.txt.qza --o-classification `basename $x`_`basename $l`_OUT --p-threads 50 --verbose; done
+
+for l in *CO1*OUT.qza; do qiime tools export --input-path $l --output-path ${l}_RESULTS; done
+
+for l in *CO1*RESULTS/*taxonomy*; do echo taxonkit lineage -i 2 $l \| taxonkit reformat -i 4 \> ${l%%tsv}_fixed.tsv; done > cmds.txt
+parallel -P 50 < cmds.txt
+python putAllTogether.py

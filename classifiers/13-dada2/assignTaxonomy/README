@@ -1,0 +1,5 @@
+#first, reformat the fasta files: 
+python reformatForAssignTaxonomy.py
+#then, run DADA2:
+runAssign.R
+putAllTogether.py

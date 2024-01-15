@@ -1,0 +1,288 @@
+---
+title: "Negative bacterial species comparison"
+output: html_document
+date: "2023-10-09"
+---
+
+# Setup
+
+```{r setup}
+source(here::here('code', 'helpers.R'))
+
+library(tidyverse)
+library(forcats)
+library(cowplot)
+library(agricolae)
+library(ggupset)
+library(RColorBrewer)
+library(patchwork)
+library(vegan)
+library(pheatmap)
+library(ggradar)
+library(broom)
+```
+
+
+```{r}
+data <- targets::tar_read(merged_all_results)
+truth <- targets::tar_read(truth_set_data)
+```
+
+Let's remove the >0.2 Kraken runs, those are too strict
+
+```{r}
+data <- data |> filter(!Type %in% c('Kraken_0.2', 'Kraken_0.3', 'Kraken_0.4', 'Kraken_0.5', 'Kraken_0.6', 'Kraken_0.7', 'Kraken_0.8', 'Kraken_0.9'))
+```
+
+Made a mistake- Metabuli's and TNT's databases is misspelled
+
+```{r}
+data <- data |> mutate(Subject = str_replace_all(Subject, pattern = '_ref.fasta', replacement=''))
+data <- data |> mutate(Subject = str_replace_all(Subject, pattern = 'final.csv', replacement = 'final.fasta'))
+```
+
+
+```{r}
+table(data$Query)
+```
+
+# Negative greengenes
+
+## 12S
+
+```{r}
+greengenes_data <- data |> filter(Query == 'make_12s_16s_simulated_reads_6-fakeGenes_GreenGenes_RESULTS_dada2_asv.fa', Subject == '12s_v010_final.fasta')
+```
+
+```{r}
+greengenes_data |> filter(!is.na(species))
+
+```
+
+## 12S exclusion databases
+
+```{r}
+
+twelve_exclusions <- data |> filter(str_starts(Subject, '12s_v010_final.fasta_Taxonomies.')) |> 
+  filter(Query == 'make_12s_16s_simulated_reads_6-fakeGenes_GreenGenes_RESULTS_dada2_asv.fa')
+table(twelve_exclusions$Subject)
+twelve_exclusions_split <- twelve_exclusions |> separate(Subject, into = c('before', 'hit'), sep='.txt_') |> 
+  # get rid of leftover non-subsetted databases
+  filter(!is.na(hit)) |> 
+  separate(hit, into=c('Database', 'after'), sep='_subset')
+```
+
+```{r}
+twelve_exclusions_split |> filter(!is.na(species)) |> 
+  mutate(Database = case_when(Database == 'thirty' ~ '70%',
+                              Database == 'fifty' ~ '50%',
+                              Database == 'seventy' ~ '30%')) |> 
+  group_by(Type, Database, after) |>
+  summarise(counts = n()) |> 
+  ggplot(aes(x = Database, group = interaction(Database, Type), fill = Type, y = counts)) + geom_boxplot(outlier.shape=NA) + 
+  geom_point(position = position_jitterdodge(), alpha=0.5, aes(color=Type)) +
+  theme_minimal() + 
+  ylab("False positive species") +
+  theme(legend.position = 'bottom')
+```
+## 16S
+
+There is no Truth. Should all be NA.
+
+```{r}
+greengenes_data <- data |> filter(Query == 'make_12s_16s_simulated_reads_6-fakeGenes_GreenGenes_RESULTS_dada2_asv.fa', Subject == '16S_v04_final.fasta')
+```
+
+```{r}
+greengenes_data |> filter(!is.na(species))
+```
+No hits :) 
+
+
+
+## 16S exclusion databases
+
+```{r}
+
+sixteen_exclusions <- data |> filter(str_starts(Subject, '16S_v04_final.fasta_Taxonomies.')) |> 
+  filter(Query == 'make_12s_16s_simulated_reads_6-fakeGenes_GreenGenes_RESULTS_dada2_asv.fa')
+table(sixteen_exclusions$Subject)
+sixteen_exclusions_split <- sixteen_exclusions |> separate(Subject, into = c('before', 'hit'), sep='.txt_') |> 
+  # get rid of leftover non-subsetted databases
+  filter(!is.na(hit)) |> 
+  separate(hit, into=c('Database', 'after'), sep='_subset')
+```
+
+```{r}
+sixteen_exclusions_plot <- 
+ sixteen_exclusions_split |> filter(!is.na(species)) |> 
+  mutate(Database = case_when(Database == 'thirty' ~ '70%',
+                              Database == 'fifty' ~ '50%',
+                              Database == 'seventy' ~ '30%')) |> 
+  group_by(Type, Database, after) |>
+  summarise(counts = n()) |> 
+  ggplot(aes(x = Database, group = interaction(Database, Type), color = Type, y = counts)) + geom_boxplot() + 
+  geom_point(position = position_jitterdodge(), alpha=0.5) +
+  theme_minimal() + 
+  ylab("False positive species")
+sixteen_exclusions_plot
+```
+
+```{r}
+sixteen_exclusions_split |> filter(!is.na(species)) |> 
+  mutate(Database = case_when(Database == 'thirty' ~ '30%',
+                              Database == 'fifty' ~ '50%',
+                              Database == 'seventy' ~ '70%')) |> 
+  group_by(Type, Database) |> 
+  summarise(species = paste(unique(species), sep = ',', collapse=', ' ))
+```
+
+```{r}
+# add the average number of ASVs after grouping for Database and Type
+sixteen_exclusions_split |> filter(!is.na(species)) |> 
+  group_by(Type, Database, after) |>
+  summarise(cases= n()) |> 
+  group_by(Type, Database) |> 
+  summarise(mean_c = mean(cases) , median_c = median(cases))
+
+```
+
+## 12S
+
+12S should have even fewer hits, but let's check!
+
+```{r}
+greengenes_data_12S <- data |> 
+  filter(Query == 'make_12s_16s_simulated_reads_6-fakeGenes_GreenGenes_RESULTS_dada2_asv.fa', 
+         Subject == '12s_v010_final.fasta')
+greengenes_data_12S |> 
+  filter(!is.na(species))
+```
+Good.
+
+```{r}
+twelve_exclusions <- data |> filter(str_starts(Subject, '12s_v010_final.fasta_')) |> 
+  filter(Query == 'make_12s_16s_simulated_reads_6-fakeGenes_GreenGenes_RESULTS_dada2_asv.fa')
+table(sixteen_exclusions$Subject)
+
+twelve_exclusions_split <- twelve_exclusions |> separate(Subject, into = c('before', 'hit'), sep='.txt_') |> 
+  # get rid of leftover non-subsetted databases
+  filter(!is.na(hit)) |> 
+  separate(hit, into=c('Database', 'after'), sep='_subset')
+```
+
+```{r}
+twelve_exclusions_plot <- twelve_exclusions_split |> filter(!is.na(species)) |> 
+  mutate(Database = case_when(Database == 'thirty' ~ '70%',
+                              Database == 'fifty' ~ '50%',
+                              Database == 'seventy' ~ '30%')) |> 
+  group_by(Type, Database, after) |>
+  summarise(counts = n()) |> 
+  ggplot(aes(x = Database, 
+             group = interaction(Database, Type),
+             color = Type, y = counts)) + 
+  geom_boxplot() + 
+  geom_point(position = position_jitterdodge(), alpha=0.5) +
+  theme_minimal() + 
+  ylab("False positive species")
+twelve_exclusions_plot
+```
+
+Nothing. Good!
+
+## CO1
+
+
+```{r}
+greengenes_data_co1 <- data |> filter(Query == 'make_12s_16s_simulated_reads_6-fakeGenes_GreenGenes_RESULTS_dada2_asv.fa', Subject == "c01_v03_final.fasta")
+greengenes_data_co1 |> filter(!is.na(species))
+```
+Good.
+
+## CO1 exclusion databases
+
+```{r}
+co1_exclusions <- data |> filter(str_starts(Subject, 'c01_v03_final.fasta_')) |> 
+  filter(Query == 'make_12s_16s_simulated_reads_6-fakeGenes_GreenGenes_RESULTS_dada2_asv.fa')
+table(co1_exclusions$Subject)
+
+co1_exclusions_split <- co1_exclusions |> separate(Subject, into = c('before', 'hit'), sep='.txt_') |> 
+  # get rid of leftover non-subsetted databases
+  filter(!is.na(hit)) |> 
+  separate(hit, into=c('Database', 'after'), sep='_subset')
+```
+```{r}
+co1_exclusions_plot <- co1_exclusions_split |> filter(!is.na(species)) |> 
+  mutate(Database = case_when(Database == 'thirty' ~ '70%',
+                              Database == 'fifty' ~ '50%',
+                              Database == 'seventy' ~ '30%')) |> 
+  group_by(Type, Database, after) |>
+  summarise(counts = n()) |> 
+  ggplot(aes(x = Database, group = interaction(Database, Type), color = Type, y = counts)) + geom_boxplot() + 
+  geom_point(position = position_jitterdodge(), alpha=0.5) +
+  theme_minimal() + 
+  ylab("False positive species")
+co1_exclusions_plot
+```
+
+Interesting hallucinations!
+
+# Together
+
+
+```{r}
+c <- co1_exclusions_split
+c$Gene <- 'CO1'
+s <- sixteen_exclusions_split
+s$Gene <- '16S'
+both <- rbind(c, s) |> relocate(Gene) |> rename('Classifier' = 'Type')
+both
+```
+
+```{r}
+greengenes_fp_plot <-both |> filter(!is.na(species)) |> 
+  mutate(Database = case_when(Database == 'thirty' ~ '70%',
+                              Database == 'fifty' ~ '50%',
+                              Database == 'seventy' ~ '30%')) |> 
+  group_by(Gene, Classifier, Database, after) |>
+  summarise(counts = n()) |> 
+  ggplot(aes(x = Database, group = interaction(Database, Classifier), color = Classifier, y = counts)) + 
+  geom_boxplot() + 
+  geom_point(position = position_jitterdodge(), alpha=0.5) +
+  theme_minimal() + 
+  ylab("False positive species") +
+  facet_wrap(~Gene, nrow = 2) + theme_minimal() + theme(legend.position="bottom")
+
+greengenes_fp_plot
+```
+
+Eh, let's make that as a table
+
+```{r}
+both |> filter(!is.na(species)) |> 
+  mutate(Database = case_when(Database == 'thirty' ~ '70%',
+                              Database == 'fifty' ~ '50%',
+                              Database == 'seventy' ~ '30%')) |> 
+  group_by(Gene, Classifier, Database, after) |>
+  summarise(counts = n()) |> 
+  group_by(Gene, Classifier, Database) |> 
+  summarise(`False positives` = median(counts),
+            `False positives min` = min(counts),
+            `False positives max` = max(counts)) |> 
+  my_save_table('Table_of_Exclusion_False_Positives')
+```
+
+
+```{r}
+both |> filter(!is.na(species)) |> 
+  mutate(Database = case_when(Database == 'thirty' ~ '70%',
+                              Database == 'fifty' ~ '50%',
+                              Database == 'seventy' ~ '30%')) |> 
+  group_by(Gene, Classifier, Database, after, species) |>
+  summarise(count = n())
+```
+
+```{r}
+my_save_plot(greengenes_fp_plot, 'greengenes_exclusion_lib_plot')
+```
+

@@ -1,0 +1,1069 @@
+---
+title: "Wadjemup comparison"
+output: html_document
+date: "2023-10-09"
+---
+
+This is the same notebook as 100_species, but we look at the wadjemup/rottnest queryset. This should be slightly harder.
+# Setup
+
+```{r setup}
+knitr::opts_chunk$set(warning = FALSE)
+
+source(here::here('code', 'helpers.R'))
+library(tidyverse)
+library(forcats)
+library(cowplot)
+library(ggupset)
+library(RColorBrewer)
+library(patchwork)
+library(vegan)
+library(pheatmap)
+library(broom)
+```
+
+
+```{r}
+data <- targets::tar_read(merged_all_results)
+# rename BLAST to BLAST97 to differentiate from BLAST100 (percentage identity in both cases)
+data <- data |> mutate(Type = str_replace(Type, '^BLAST$', 'BLAST97'))
+truth <- targets::tar_read(truth_set_data)
+```
+
+
+```{r}
+table(data$Type)
+```
+Let's remove the >0.2 Kraken runs, those are too strict
+
+```{r}
+data <- data |> filter(!Type %in% c('Kraken_0.2', 'Kraken_0.3', 'Kraken_0.4', 'Kraken_0.5', 'Kraken_0.6', 'Kraken_0.7', 'Kraken_0.8', 'Kraken_0.9'))
+```
+
+Made a mistake- Metabuli's and TNT's databases is misspelled
+
+```{r}
+data <- data |> mutate(Subject = str_replace_all(Subject, pattern = '_ref.fasta', replacement=''))
+data <- data |> mutate(Subject = str_replace_all(Subject, pattern = 'final.csv', replacement = 'final.fasta'))
+```
+
+
+```{r}
+table(data$Query)
+```
+
+# Wadjemup species 
+## Check 12S results
+
+```{r}
+table(data$Subject)
+table(data$Subject)
+twelveS_data <- data |> filter(Subject == '12s_v010_final.fasta')
+sixteenS_data <- data |> filter(Subject == '16S_v04_final.fasta')
+table(twelveS_data$Query)
+table(sixteenS_data$Query)
+table(sixteenS_data$Subject)
+```
+
+```{r}
+twelveS_data_vs_12S_100 <- twelveS_data |> 
+  filter(Query == 'make_12s_16s_simulated_reads_8-Rottnest_runEDNAFLOW_12S_RESULTS_dada2_asv.fa')
+sixteenS_data_vs_16S_100 <- sixteenS_data |> 
+  filter(Query == 'make_12s_16s_simulated_reads_8-Rottnest_runEDNAFLOW_16S_RESULTS_dada2_asv.fa' )
+```
+
+```{r}
+twelveS_data_vs_12S_100 |> select(Type, species) |> filter(species != 'dropped' &
+                                                             !is.na(species)) |>
+  group_by(Type) |> count(species) |> summarise(n = n()) |>
+  ggplot(aes(x = Type, y = n, fill = n)) + geom_col() + coord_flip() + 
+  theme_minimal() + 
+  ylab('Count') + 
+  ggtitle('12S: Species-level hits per classifier')
+```
+```{r}
+twelveS_data_vs_12S_100 |> select(Type, genus) |> filter(genus != 'dropped' &
+                                                             !is.na(genus)) |>
+  group_by(Type) |> count(genus) |> summarise(n = n()) |>
+  ggplot(aes(x = Type, y = n, fill = n)) + geom_col() + coord_flip() + 
+  theme_minimal() + 
+  ylab('Count') + 
+  ggtitle('12S: Genus-level hits per classifier')
+```
+
+```{r}
+twelveS_truth <- truth |> filter(Query == 'make_12s_16s_simulated_reads_8-Rottnest_runEDNAFLOW_12S_RESULTS_dada2_asv.fa') |> select(OTU, family, species) |> rename(True_OTU = OTU, True_family = family, True_species = species)
+head(twelveS_truth)
+```
+
+```{r}
+twelveS_data_vs_12S_100 |> left_join(twelveS_truth, by = c('OTU' = 'True_OTU')) |>
+  mutate(Correct = True_species == species) |> 
+  filter(species != 'dropped' & !is.na(species)) |> 
+  group_by(Type) |> count(Correct) |> 
+  ggplot(aes(x = fct_rev(fct_reorder2(Type, Correct, n)), fill = Correct, y = n))+ geom_col() +
+  coord_flip() + theme_minimal() + xlab('Type') + 
+  ggtitle('12S: Correct and incorrect species-level classifications (absolute)') +
+  scale_fill_manual(values = c("#E69F00", "#56B4E9", "#009E73",
+          "#F0E442", "#0072B2", "#D55E00", "#CC79A7"))
+
+```
+
+```{r}
+cols <- c('Correct species' = "#009E73", 'Correct genus'="#56B4E9", 'Correct family' = "#0072B2", 'Incorrect family' = "#E69F00", 'Incorrect genus'="#F0E442", 'Incorrect species'="#D55E00", 'No hit'= "#CC79A7")
+```
+
+```{r}
+twelve_s_relative_plot <- twelveS_data_vs_12S_100 |> left_join(twelveS_truth, by = c('OTU' = 'True_OTU')) |>
+  separate(True_species, into = c('True_Genus', 'True_Epiteth'), remove = FALSE)|> 
+  mutate(species = na_if(species, 'dropped')) |> 
+  mutate(genus = na_if(genus, 'dropped')) |> 
+
+  mutate(CorrectSpecies = case_when(!is.na(species) & True_species == species ~ 'Correct species',
+                              !is.na(species) & True_species != species ~ 'Incorrect species',
+                              !is.na(genus) & !is.na(True_Genus) & True_Genus == genus ~ 'Correct genus',
+                              !is.na(genus) & !is.na(True_Genus) & True_Genus != genus ~ 'Incorrect genus',
+                              !is.na(family) & True_family == family ~ 'Correct family',
+                              !is.na(family) & True_family != family ~ 'Incorrect family',
+                              TRUE ~ NA)) |> 
+  group_by(Type) |>
+  count(CorrectSpecies) |> 
+  mutate(total = sum(n, na.rm=TRUE)) |> 
+  mutate(missing = 102 - total) |> 
+  group_modify(~ add_row(.x)) |> 
+  group_modify(~ {
+    .x |> mutate(new_col= max(missing, na.rm=TRUE)) |> 
+      mutate(n = case_when(is.na(CorrectSpecies) & is.na(missing) ~ new_col,
+                                  TRUE ~ n)) |> 
+      select(-new_col)
+  } ) |> 
+  mutate(total = 102) |> 
+  mutate(perc = n / total * 100) |> 
+  mutate(CorrectSpecies = replace_na(CorrectSpecies, 'No hit')) |> 
+  mutate(CorrectSpecies = factor(CorrectSpecies, rev(c('Correct species', 'Correct genus', 'Correct family', 'Incorrect family', 'Incorrect genus', 'Incorrect species', 'No hit')))) |> 
+  ggplot(aes(x = fct_rev(fct_reorder2(Type, CorrectSpecies, n)), fill = CorrectSpecies, y = perc))+ 
+  geom_col() +
+  coord_flip() + 
+  theme_minimal() + 
+  ylab('Percentage') + xlab('Type') +
+  ggtitle('12S: Correct and incorrect species-level classifications (relative)') +
+  scale_fill_manual(name = 'Outcome', values = cols, breaks=names(cols))
+twelve_s_relative_plot
+```
+### Calculate Upset-based species sightings
+
+```{r}
+type_list <- twelveS_data_vs_12S_100 |> select(Type, species) |> unique() |> filter(!is.na(species) & species != 'dropped') |> 
+  group_by(species) |> 
+  summarize('Type' = list(Type))
+
+a <- type_list |>
+  ggplot(aes(x = Type)) + 
+  geom_bar() +
+  scale_x_upset(n_intersections = 12) +
+  ggtitle('12S: Shared species') +
+  ylab('Species')
+a
+```
+
+```{r}
+type_list <- twelveS_data_vs_12S_100 |> left_join(twelveS_truth, by = c('OTU' = 'True_OTU')) |>
+  filter(species == True_species) |> 
+  filter(species != 'dropped' & !is.na(species)) |> 
+  select(Type, species) |> unique() |> 
+  group_by(species) |> 
+  summarize('Type' = list(Type))
+
+b <- type_list |>
+  ggplot(aes(x = Type)) + 
+  geom_bar() +
+  scale_x_upset(n_intersections = 12) +
+  ggtitle('12S: Shared correct species') +
+  ylab('Species')
+b
+```
+
+```{r}
+type_list <- twelveS_data_vs_12S_100 |> left_join(twelveS_truth, by = c('OTU' = 'True_OTU')) |>
+  filter(species != True_species) |> 
+  filter(species != 'dropped' & !is.na(species)) |> 
+  select(Type, species) |> unique() |> 
+  group_by(species) |> 
+  summarize('Type' = list(Type))
+
+c <- type_list |>
+  ggplot(aes(x = Type)) + 
+  geom_bar() +
+  scale_x_upset(n_intersections = 12) +
+  ggtitle('12S: Shared incorrect species') +
+  ylab('Species')
+c
+```
+
+```{r fig.height=8, warning=FALSE}
+a + b + c & ylim(c(0, 30)) & 
+  theme(
+  # Hide panel borders and remove grid lines
+  panel.border = element_blank(),
+  panel.grid.major = element_blank(),
+  panel.background = element_blank(),
+  panel.grid.minor = element_blank(),
+  #panel.grid.major.y = element_line(),
+  # Change axis line
+  axis.line = element_line(colour = "black")
+  )
+```
+
+### Calculate FP/TP/TN/FN
+
+```{r}
+add_scores <- function(twelveS_data_vs_12S_100_with_MaxTruth, twelveS_truth ) {
+  twelveS_data_vs_12S_100_with_MaxTruth|> left_join(twelveS_truth, by = c('OTU' = 'True_OTU')) |>
+  separate(True_species, into = c('True_Genus', 'True_Epiteth'), remove = FALSE)|> 
+  mutate(species = na_if(species, 'dropped')) |> 
+  mutate(genus = na_if(genus, 'dropped')) |> 
+
+  mutate(CorrectSpecies = case_when(!is.na(species) & True_species == species ~ 'Correct species',
+                              !is.na(species) & True_species != species ~ 'Incorrect species',
+                              !is.na(genus) & !is.na(True_Genus) & True_Genus == genus ~ 'Correct genus',
+                              !is.na(genus) & !is.na(True_Genus) & True_Genus != genus ~ 'Incorrect genus',
+                              !is.na(family) & True_family == family ~ 'Correct family',
+                              !is.na(family) & True_family != family ~ 'Incorrect family',
+                              TRUE ~ NA)) |> 
+  group_by(Type) |>
+  summarise(TP = sum(str_detect(CorrectSpecies, pattern='Correct species'), na.rm=TRUE),
+            FP = sum(str_detect(CorrectSpecies, pattern = 'Incorrect species'), na.rm=TRUE),
+            TN = sum(str_detect(replace_na(CorrectSpecies,'NA'), pattern='NA') & is.na(True_species), na.rm=TRUE),
+            FN = sum(is.na(species) & !is.na(True_species))) |> 
+  mutate(sums = TP + FP + TN + FN) |> 
+  mutate(missing = 102 - sums) |> 
+  mutate(FN = FN + missing) |> 
+  mutate(sums = TP + FP + TN + FN) |> 
+  select(-c(missing, sums))
+}
+```
+
+```{r}
+scores <- add_scores(twelveS_data_vs_12S_100, twelveS_truth)
+```
+
+```{r}
+scores <- scores |> rowwise() |> mutate(recall = recall(TP, FN), precision = precision(TP, FP),
+                              f1 = f1(precision, recall), f0.5 = f0.5(precision, recall), accuracy = accuracy(TP, FP, FN, TN))
+scores
+```
+```{r}
+twelveS_scoreS_plot <- scores |> select(-c(TP, FP, FN, TN)) |> pivot_longer(-Type, names_to='Score') |>  ggplot(aes(x = fct_rev(fct_reorder(Type, value)), y = value, group=Score, color = Score, fill =Score)) + geom_line() + ylim(c(0, 1))  + theme_minimal_hgrid()+ theme(axis.text.x = element_text( angle = 45, hjust = 1)) + ylab('Score') + xlab('Tool') + ggtitle('12S scores')
+twelveS_scoreS_plot
+```
+
+#### Scores heatmap
+
+Let's also make a heatmap from that
+
+```{r}
+b <- scores$Type
+m <- scores |> select(-Type) |> select(accuracy, recall, precision, f1, f0.5) |> as.matrix()
+rownames(m) <- b
+pheatmap(m, cluster_cols=FALSE, display_numbers = TRUE,
+         color = colorRampPalette(brewer.pal(n = 7, name =
+  "RdYlGn"))(100))
+```
+```{r}
+b <- scores$Type
+m <- scores |> select(-Type) |> select(TP, FP, FN) |> as.matrix()
+rownames(m) <- b
+pheatmap(m, cluster_cols=FALSE, display_numbers = TRUE,
+         color = colorRampPalette(brewer.pal(n = 7, name =
+  "RdYlGn"))(100))
+```
+
+### Metaclassifier
+
+```{r}
+table(twelveS_data_vs_12S_100$Type)
+```
+
+First, we count the per-OTU species hits
+```{r}
+twelveS_data_vs_12S_100_maxCount <- twelveS_data_vs_12S_100 |>  
+  mutate(species = na_if(species, 'dropped')) |> 
+  filter(!is.na(species)) |> 
+  #filter(! Type %in% c('Mothur', 'VSEARCH', 'Kraken_0.2', 'Qiime2', 'Metabuli', 'NBC', 'BLAST97', 'Kraken_0.0', 'Kraken_0.1')) |> 
+  group_by(Query, Subject, OTU) |> 
+  count(species) |> 
+  # double check the truth
+  #left_join(twelveS_truth, by = c('OTU' = 'True_OTU')) |> 
+  #mutate(Truth = True_species == species) |> 
+  # pull out the per-group highest n
+  filter( n > 4) |> 
+  slice_max(n, n=1, with_ties = FALSE) |> 
+  mutate(Type = 'MaxCount', .before = 'Query') |> 
+  select(-n)
+twelveS_data_vs_12S_100_maxCount
+```
+
+```{r}
+twelveS_data_vs_12S_100_with_MaxTruth <- twelveS_data_vs_12S_100 |> 
+  bind_rows(twelveS_data_vs_12S_100_maxCount) #|>  
+  #filter(! Type %in% c('Mothur', 'VSEARCH', 'Kraken_0.2', 'Qiime2', 'Metabuli', 'NBC', 'BLAST97', 'Kraken_0.0', 'Kraken_0.1')) 
+  
+```
+
+
+```{r}
+maxTruth_scores <-  add_scores(twelveS_data_vs_12S_100_with_MaxTruth, twelveS_truth )
+```
+
+```{r}
+maxTruth_scores <- maxTruth_scores |> rowwise() |> mutate(recall = recall(TP, FN), precision = precision(TP, FP),
+                              f1 = f1(precision, recall), f0.5 = f0.5(precision, recall), accuracy = accuracy(TP, FP, FN, TN))
+```
+
+```{r}
+maxTruth_scoreS_plot <- maxTruth_scores |> select(-c(TP, FP, FN, TN)) |> pivot_longer(-Type, names_to='Score') |>  ggplot(aes(x = fct_rev(fct_reorder(Type, value)), y = value, group=Score, color = Score, fill =Score)) + geom_line() + ylim(c(0, 1))  + theme_minimal_hgrid()+ theme(axis.text.x = element_text( angle = 45, hjust = 1)) + ylab('Score') + xlab('Tool') + geom_point() + ggtitle('12S scores')
+maxTruth_scoreS_plot
+```
+With the Wadjemup data MaxCount performs slightly better! But still not as good as MMSeqs2....
+
+## 16S
+
+```{r}
+sixteenS_truth <- truth |> filter(Query == 'make_12s_16s_simulated_reads_8-Rottnest_runEDNAFLOW_16S_RESULTS_dada2_asv.fa') |> select(OTU, family, species) |> rename(True_OTU = OTU, True_family = family, True_species = species)
+tail(sixteenS_truth)
+```
+
+```{r}
+sixteenS_relative_plot <- sixteenS_data_vs_16S_100 |> left_join(sixteenS_truth, by = c('OTU' = 'True_OTU')) |>
+ separate(True_species, into = c('True_Genus', 'True_Epiteth'), remove = FALSE)|> 
+  mutate(species = na_if(species, 'dropped')) |> 
+  mutate(genus = na_if(genus, 'dropped')) |> 
+
+  mutate(CorrectSpecies = case_when(!is.na(species) & True_species == species ~ 'Correct species',
+                              !is.na(species) & True_species != species ~ 'Incorrect species',
+                              !is.na(genus) & !is.na(True_Genus) & True_Genus == genus ~ 'Correct genus',
+                              !is.na(genus) & !is.na(True_Genus) & True_Genus != genus ~ 'Incorrect genus',
+                              !is.na(family) & True_family == family ~ 'Correct family',
+                              !is.na(family) & True_family != family ~ 'Incorrect family',
+                              TRUE ~ NA)) |> 
+  group_by(Type) |> 
+  count(CorrectSpecies) |> 
+  mutate(total = sum(n)) |> 
+  mutate(missing = 112 - total) |> 
+  group_modify(~ add_row(.x)) |> 
+  group_modify(~ {
+    .x |> mutate(new_col= max(missing, na.rm=TRUE)) |> 
+      mutate(n = case_when(is.na(CorrectSpecies) & is.na(missing) ~ new_col,
+                                  TRUE ~ n)) |> 
+      select(-new_col)
+  } ) |> 
+  mutate(total = 112) |> 
+  mutate(perc = n / total * 100) |> 
+  mutate(CorrectSpecies = replace_na(CorrectSpecies, 'No hit')) |> 
+  mutate(CorrectSpecies = factor(CorrectSpecies, rev(c('Correct species', 'Correct genus', 'Correct family', 'Incorrect family', 'Incorrect genus', 'Incorrect species', 'No hit')))) |> 
+  tidyr::complete(CorrectSpecies, fill = list(n=0, total = 112, missing = NA, perc = 0)) |>  
+  ggplot(aes(x = fct_rev(fct_reorder2(Type, CorrectSpecies, n)), fill = CorrectSpecies, y = perc))+ 
+  geom_col() +
+  coord_flip() + 
+  theme_minimal() + 
+  ylab('Percentage') + xlab('Type') +
+  ggtitle('16S: Correct and incorrect species-level classifications (relative)') +
+  scale_fill_manual(name = 'Outcome', values = cols, breaks=names(cols))
+sixteenS_relative_plot 
+```
+
+### Calculate scores
+
+```{r}
+scores <- add_scores(sixteenS_data_vs_16S_100, sixteenS_truth)
+scores
+```
+
+
+```{r}
+scores <- scores |> rowwise() |> mutate(recall = recall(TP, FN), precision = precision(TP, FP),
+                              f1 = f1(precision, recall), f0.5 = f0.5(precision, recall), accuracy = accuracy(TP, FP, FN, TN))
+scores
+```
+```{r}
+sixteenS_score_plot <- scores |> select(-c(TP, FP, FN, TN)) |> pivot_longer(-Type, names_to='Score') |>  ggplot(aes(x = fct_rev(fct_reorder(Type, value)), y = value, group=Score, color = Score, fill =Score)) + geom_line() + ylim(c(0, 1))  + theme_minimal_hgrid() + theme(axis.text.x = element_text( angle = 45, hjust = 1)) + ylab('Score') + xlab('Tool') +  ggtitle('16S scores')
+sixteenS_score_plot 
+```
+```{r}
+b <- scores$Type
+m <- scores |> select(-Type) |> select(accuracy, recall, precision, f1, f0.5) |> as.matrix()
+rownames(m) <- b
+pheatmap(m, cluster_cols=FALSE, display_numbers = TRUE,
+         color = colorRampPalette(brewer.pal(n = 7, name =
+  "RdYlGn"))(100))
+```
+
+```{r}
+b <- scores$Type
+m <- scores |> select(-Type) |> select(TP, FP, FN) |> as.matrix()
+rownames(m) <- b
+pheatmap(m, cluster_cols=FALSE, display_numbers = TRUE,
+         color = colorRampPalette(brewer.pal(n = 7, name =
+  "RdYlGn"))(100))
+```
+### Calculate Upset-based species sightings
+
+```{r}
+type_list <- sixteenS_data_vs_16S_100  |> select(Type, species) |> unique() |> filter(!is.na(species) & species != 'dropped') |> 
+  group_by(species) |> 
+  summarize('Type' = list(Type))
+
+a <- type_list |>
+  ggplot(aes(x = Type)) + 
+  geom_bar() +
+  scale_x_upset(n_intersections = 12) +
+  ggtitle('16S: Shared species') +
+  ylab('Species')
+a
+```
+
+```{r}
+type_list <- sixteenS_data_vs_16S_100 |> left_join(sixteenS_truth,  by = c('OTU' = 'True_OTU')) |>
+  filter(species == True_species) |> 
+  filter(species != 'dropped' & !is.na(species)) |> 
+  select(Type, species) |> unique() |> 
+  group_by(species) |> 
+  summarize('Type' = list(Type))
+
+b <- type_list |>
+  ggplot(aes(x = Type)) + 
+  geom_bar() +
+  scale_x_upset(n_intersections = 12) +
+  ggtitle('16S: Shared correct species') +
+  ylab('Species')
+b
+```
+
+```{r}
+type_list <- sixteenS_data_vs_16S_100 |> left_join(sixteenS_truth, by = c('OTU' = 'True_OTU')) |>
+  filter(species != True_species) |> 
+  filter(species != 'dropped' & !is.na(species)) |> 
+  select(Type, species) |> unique() |> 
+  group_by(species) |> 
+  summarize('Type' = list(Type))
+
+c <- type_list |>
+  ggplot(aes(x = Type)) + 
+  geom_bar() +
+  scale_x_upset(n_intersections = 12) +
+  ggtitle('16S: Shared incorrect species') +
+  ylab('Species')
+c
+```
+
+```{r fig.height=8, warning=FALSE}
+a + b + c & ylim(c(0, 20)) & 
+  theme(
+  # Hide panel borders and remove grid lines
+  panel.border = element_blank(),
+  panel.grid.major = element_blank(),
+  panel.background = element_blank(),
+  panel.grid.minor = element_blank(),
+  #panel.grid.major.y = element_line(),
+  # Change axis line
+  axis.line = element_line(colour = "black")
+  )
+```
+
+## 16S/12S relative plots
+
+```{r fig.height=8}
+sixteenS_relative_plot / twelve_s_relative_plot
+```
+
+
+Let's make without titles, but with a/b
+```{r fig.height=6}
+(sixteenS_relative_plot + ggtitle('') + ylab(''))/ (twelve_s_relative_plot + ggtitle('')) + 
+  plot_annotation(tag_levels = c('A','B')) +
+  plot_layout(guides = 'collect')
+```
+
+```{r fig.height=7}
+(sixteenS_score_plot +geom_point() + theme(axis.title.x = element_blank()))/ (twelveS_scoreS_plot + geom_point())
+```
+
+## 12S exclusion databases
+
+```{r}
+twelve_exclusions <- data |> filter(str_starts(Subject, '12s_v010_final.fasta_Taxonomies.CountedFams.txt_')) |> 
+  filter(Query == 'make_12s_16s_simulated_reads_8-Rottnest_runEDNAFLOW_12S_RESULTS_dada2_asv.fa')
+table(twelve_exclusions$Subject)
+twelve_exclusions_split <- twelve_exclusions |> separate(Subject, into = c('before', 'hit'), sep='.txt_') |> 
+  # get rid of leftover non-subsetted databases
+  filter(!is.na(hit)) |> 
+  separate(hit, into=c('Database', 'after'), sep='_subset')
+```
+```{r}
+twelve_exclusions_split_averaged <- twelve_exclusions_split |> left_join(twelveS_truth, by = c('OTU' = 'True_OTU')) |>
+  separate(True_species, into = c('True_Genus', 'True_Epiteth'), remove = FALSE)|> 
+  mutate(species = na_if(species, 'dropped')) |> 
+  mutate(genus = na_if(genus, 'dropped')) |> 
+
+  mutate(CorrectSpecies = case_when(!is.na(species) & True_species == species ~ 'Correct species',
+                              !is.na(species) & True_species != species ~ 'Incorrect species',
+                              !is.na(genus) & !is.na(True_Genus) & True_Genus == genus ~ 'Correct genus',
+                              !is.na(genus) & !is.na(True_Genus) & True_Genus != genus ~ 'Incorrect genus',
+                              !is.na(family) & True_family == family ~ 'Correct family',
+                              !is.na(family) & True_family != family ~ 'Incorrect family',
+                              TRUE ~ NA)) |> 
+  group_by(Type, Database, after) |>
+  summarise(TP = sum(str_detect(CorrectSpecies, pattern='Correct species'), na.rm=TRUE),
+            FP = sum(str_detect(CorrectSpecies, pattern = 'Incorrect species'), na.rm=TRUE),
+            TN = sum(str_detect(replace_na(CorrectSpecies,'NA'), pattern='NA') & is.na(True_species), na.rm=TRUE),
+            FN = sum(is.na(species) & !is.na(True_species))) |> 
+  mutate(sums = TP + FP + TN + FN) |> 
+  mutate(missing = 102 - sums) |> 
+  mutate(FN = FN + missing) |> 
+  mutate(sums = TP + FP + TN + FN) |> 
+  select(-c(missing, sums)) |> 
+  group_by(Type, Database) |> 
+  summarise(mean_TP = mean(TP),
+            mean_FP = mean(FP),
+            mean_TN = mean(TN),
+            mean_FN = mean(FN)) |> 
+  rowwise() |> 
+  mutate(recall = recall(mean_TP, mean_FN), 
+         precision = precision(mean_TP, mean_FP),
+         f1 = f1(precision, recall),
+         f0.5 = f0.5(precision, recall),
+         accuracy = accuracy(mean_TP, mean_FP, mean_FN, mean_TN)) 
+twelve_exclusions_split_averaged <- twelve_exclusions_split_averaged |> 
+  mutate(Database = case_when ( Database == 'fifty' ~ '50%',
+                               Database == 'seventy' ~ '70%',
+                               Database == 'thirty' ~ '30%',
+                               TRUE ~ Database))
+```
+
+```{r}
+f1_pl <- twelve_exclusions_split_averaged |> 
+  ggplot(aes(x = Type, y = f1, group = Database, color = Database, fill = Database)) + 
+  geom_point() +
+  geom_line() +
+  theme_minimal()
+```
+
+```{r}
+f0.5_pl <- twelve_exclusions_split_averaged |> 
+  ggplot(aes(x = Type, y = f0.5, group = Database, color = Database, fill = Database)) + 
+  geom_point() +
+  geom_line() +
+  theme_minimal()
+```
+
+```{r}
+precision_pl <- twelve_exclusions_split_averaged |> 
+  ggplot(aes(x = Type, y = precision, group = Database, color = Database, fill = Database)) + 
+  geom_point() +
+  geom_line() +
+  theme_minimal()
+```
+
+```{r}
+recall_pl <- twelve_exclusions_split_averaged |> 
+  ggplot(aes(x = Type, y = recall, group = Database, color = Database, fill = Database)) + 
+  geom_point() +
+  geom_line() +
+  theme_minimal()
+```
+
+```{r fig.height=8}
+(f1_pl / f0.5_pl / precision_pl / recall_pl) +  plot_layout(guides = 'collect')
+
+``` 
+
+Lets zero in on the precision and make boxplots with jitter dots
+
+```{r}
+un_summarised_twelve <- twelve_exclusions_split |> left_join(twelveS_truth, by = c('OTU' = 'True_OTU')) |>
+  separate(True_species, into = c('True_Genus', 'True_Epiteth'), remove = FALSE)|> 
+  mutate(species = na_if(species, 'dropped')) |> 
+  mutate(genus = na_if(genus, 'dropped')) |> 
+
+  mutate(CorrectSpecies = case_when(!is.na(species) & True_species == species ~ 'Correct species',
+                              !is.na(species) & True_species != species ~ 'Incorrect species',
+                              !is.na(genus) & !is.na(True_Genus) & True_Genus == genus ~ 'Correct genus',
+                              !is.na(genus) & !is.na(True_Genus) & True_Genus != genus ~ 'Incorrect genus',
+                              !is.na(family) & True_family == family ~ 'Correct family',
+                              !is.na(family) & True_family != family ~ 'Incorrect family',
+                              TRUE ~ NA)) |> 
+  group_by(Type, Database, after) |>
+  summarise(TP = sum(str_detect(CorrectSpecies, pattern='Correct species'), na.rm=TRUE),
+            FP = sum(str_detect(CorrectSpecies, pattern = 'Incorrect species'), na.rm=TRUE),
+            TN = sum(str_detect(replace_na(CorrectSpecies,'NA'), pattern='NA') & is.na(True_species), na.rm=TRUE),
+            FN = sum(is.na(species) & !is.na(True_species))) |> 
+  mutate(sums = TP + FP + TN + FN) |> 
+  mutate(missing = 102 - sums) |> 
+  mutate(FN = FN + missing) |> 
+  mutate(sums = TP + FP + TN + FN) |> 
+  select(-c(missing, sums)) |> 
+  rowwise() |> 
+  mutate(recall = recall(TP, FN), 
+         precision = precision(TP, FP),
+         f1 = f1(precision, recall),
+         f0.5 = f0.5(precision, recall),
+         accuracy = accuracy(TP, FP, FN, TN)) |> 
+  mutate(Database = case_when ( Database == 'fifty' ~ '50%',
+                               Database == 'seventy' ~ '70%',
+                               Database == 'thirty' ~ '30%',
+                               TRUE ~ Database))
+```
+
+```{r}
+un_summarised_twelve |> group_by(Type, Database) |> mutate(best = max(mean(precision))) |>
+  ggplot(aes(x = fct_reorder(Type, best), group = interaction(Type, Database),  color=Database, y = precision)) +
+  geom_boxplot(outlier.shape = NA) +
+  coord_flip() +
+  theme_minimal() +
+  xlab('Type') +
+  ylab('Precision') +
+  geom_point(position = position_jitterdodge(), alpha=0.5)
+```
+```{r}
+un_summarised_twelve  |> group_by(Type, Database) |> mutate(best = max(mean(f0.5))) |>
+  ggplot(aes(x = fct_reorder(Type, best), group = interaction(Type, Database), color=Database, y = f0.5)) +
+  geom_boxplot(outlier.shape = NA) + 
+  coord_flip() + 
+  theme_minimal() + 
+  xlab('Type') +
+  ylab('f0.5') +
+  ylim(c(0, 1)) +
+  geom_point(position = position_jitterdodge(), alpha=0.5)
+```
+
+```{r}
+un_summarised_twelve  |> group_by(Type, Database) |> mutate(best = max(mean(recall))) |>
+  ggplot(aes(x = fct_reorder(Type, best), group = interaction(Type, Database), color=Database, y = recall)) +
+  geom_boxplot(outlier.shape = NA) + 
+  coord_flip() + 
+  theme_minimal() + 
+  xlab('Type') +
+  ylab('f0.5') +
+  ylim(c(0, 1)) +
+  geom_point(position = position_jitterdodge(), alpha=0.5)
+```
+
+```{r}
+un_summarised_twelve  |> 
+  filter(Type %in% c('BLAST100', 'Kraken_0.0', 'Kraken_0.05', 'Qiime2', 'TNT')) |> 
+  ggplot(aes(x=Database, y = precision, fill=Type)) + #fill=factor(Database, levels=c('30%','50%','70%')))) + 
+  geom_boxplot() +
+  labs(fill='Type') + 
+  ylab('Precision') + 
+  theme_minimal()
+```
+
+```{r}
+false_positives <- un_summarised_twelve  |> 
+  filter(Type %in% c('BLAST100', 'Kraken_0.0', 'Kraken_0.05', 'Kraken_0.1', 'MMSeqs2', 'TNT')) |> 
+  ggplot(aes(x=Database, y = FP/102*100, fill=Type)) + #fill=factor(Database, levels=c('30%','50%','70%')))) + 
+  geom_boxplot(outlier.shape=NA) +
+  labs(fill='Type') + 
+  ylab('False positives (%)') + 
+  geom_point(aes(color=Type), 
+             position = position_jitterdodge(jitter.width = 0.2), 
+             alpha=0.5,
+             show.legend = FALSE)+
+  theme_minimal()
+false_positives
+```
+
+```{r}
+true_positives <- un_summarised_twelve  |> 
+  filter(Type %in% c('BLAST100', 'Kraken_0.0', 'Kraken_0.05', 'Kraken_0.1', 'MMSeqs2', 'TNT')) |> 
+  ggplot(aes(x=Database, y = TP/102*100, fill=Type)) + #fill=factor(Database, levels=c('30%','50%','70%')))) + 
+  geom_boxplot(outlier.shape=NA) +
+  labs(fill='Type') + 
+  ylab('True positives (%)') + 
+  geom_point(aes(color=Type), 
+           position = position_jitterdodge(jitter.width = 0.2), 
+           alpha=0.5,
+           show.legend = FALSE)+
+  theme_minimal()
+true_positives
+```
+
+```{r fig.height=6}
+false_positives/ true_positives + plot_layout(guides = 'collect') & coord_flip()
+```
+### Phylogenetic diversity
+
+
+We can also easily calculate alpha diversity across these tools, as alpha diversity is the number of species. We treat classifiers/Types as sites.
+
+
+```{r}
+spec_summarised <- twelve_exclusions_split |> 
+  group_by(Type, Query, Database, after) |> 
+  mutate(Database = case_when ( Database == 'fifty' ~ '50%',
+                               Database == 'seventy' ~ '70%',
+                               Database == 'thirty' ~ '30%',
+                               TRUE ~ Database)) |> 
+  filter(!is.na(species)) |> 
+  summarise(`Alpha diversity index` = length(unique(species)))
+```
+
+```{r}
+spec_summarised |> 
+  ggplot(aes(x = Type, y = `Alpha diversity index`, fill=Type, group = Type )) + 
+  geom_boxplot() +
+  geom_point(aes(color=Type), 
+           position = position_jitterdodge(jitter.width = 0.2), 
+           alpha=0.5,
+           show.legend = FALSE) + 
+  facet_wrap(~Database) + coord_flip() + theme_minimal()
+```
+
+Let's also do not all of the classifiers
+```{r}
+spec_summarised |> 
+  filter(Type %in% c('BLAST100', 'Kraken_0.0', 'Kraken_0.05', 'Kraken_0.1','MMSeqs2', 'Qiime2', 'TNT')) |> 
+  ggplot(aes(x = Type, y = `Alpha diversity index`, fill=Type, group = Type )) + 
+  geom_boxplot() +
+  geom_point(aes(color=Type), 
+           position = position_jitterdodge(jitter.width = 0.2), 
+           alpha=0.5,
+           show.legend = FALSE) + 
+  facet_wrap(~Database) + coord_flip() + theme_minimal()
+```
+
+```{r}
+a <- spec_summarised |> 
+  filter(Type %in% c('BLAST100', 'BLAST97', 'Kraken_0.0','Kraken_0.05', 'Kraken_0.1','MMSeqs2', 'Qiime2', 'TNT')) |> 
+  group_by(Database) |> 
+  arrange(Database) |> 
+  group_map(~aov(`Alpha diversity index` ~ Type, data=.))
+
+names(a) <- spec_summarised |> arrange(Database) |> pull(Database) |> unique() # I don't like this :(
+a
+```
+
+```{r}
+library(agricolae)
+groupslist <- list()
+
+for(key in names(a)) {
+  print(key)
+  groupslist[[key]] <- HSD.test(a[[key]], 'Type')$groups|> 
+    as_tibble(rownames = 'Type') |> 
+    select(-`Alpha diversity index`)
+}
+groups_df <- bind_rows(groupslist, .id='Database')
+```
+
+```{r fig.height=5}
+spec_summarised |> 
+  filter(Type %in% c('BLAST100', 'BLAST97', 'Kraken_0.0', 'Kraken_0.05', 'Kraken_0.1','MMSeqs2', 'Qiime2', 'TNT')) |> 
+  left_join(groups_df, by = c('Database', 'Type')) |> 
+  ggplot(aes(x = Type, y = `Alpha diversity index`, fill=Type, group = Type )) + 
+  geom_boxplot(outlier.shape=NA) +
+  geom_point(aes(color=Type), 
+           position = position_jitterdodge(jitter.width = 0.2), 
+           alpha=0.5,
+           show.legend = FALSE) + 
+  facet_wrap(~Database) + 
+  geom_text(aes(x = Type, y = max(`Alpha diversity index`) + 2, label = groups),
+            #col = 'black',
+            size = 4) +
+  #coord_flip() + 
+  theme_minimal() +
+  theme(axis.text.x = element_text( angle = 90, hjust = 1)) +
+  guides(fill="none")
+```
+
+
+
+
+## 16S exclusion databases
+
+```{r}
+sixteen_exclusions <- data |> filter(str_starts(Subject, '16S_v04_final.fasta_Taxonomies.')) |> 
+  filter(Query == 'make_12s_16s_simulated_reads_8-Rottnest_runEDNAFLOW_16S_RESULTS_dada2_asv.fa')
+table(sixteen_exclusions$Subject)
+sixteen_exclusions_split <- sixteen_exclusions |> separate(Subject, into = c('before', 'hit'), sep='.txt_') |> 
+  # get rid of leftover non-subsetted databases
+  filter(!is.na(hit)) |> 
+  separate(hit, into=c('Database', 'after'), sep='_subset')
+```
+
+```{r}
+sixteen_exclusions_split_averaged <- sixteen_exclusions_split |> left_join(sixteenS_truth, by = c('OTU' = 'True_OTU')) |>
+  separate(True_species, into = c('True_Genus', 'True_Epiteth'), remove = FALSE)|> 
+  mutate(species = na_if(species, 'dropped')) |> 
+  mutate(genus = na_if(genus, 'dropped')) |> 
+
+  mutate(CorrectSpecies = case_when(!is.na(species) & True_species == species ~ 'Correct species',
+                              !is.na(species) & True_species != species ~ 'Incorrect species',
+                              !is.na(genus) & !is.na(True_Genus) & True_Genus == genus ~ 'Correct genus',
+                              !is.na(genus) & !is.na(True_Genus) & True_Genus != genus ~ 'Incorrect genus',
+                              !is.na(family) & True_family == family ~ 'Correct family',
+                              !is.na(family) & True_family != family ~ 'Incorrect family',
+                              TRUE ~ NA)) |> 
+  group_by(Type, Database, after) |>
+  summarise(TP = sum(str_detect(CorrectSpecies, pattern='Correct species'), na.rm=TRUE),
+            FP = sum(str_detect(CorrectSpecies, pattern = 'Incorrect species'), na.rm=TRUE),
+            TN = sum(str_detect(replace_na(CorrectSpecies,'NA'), pattern='NA') & is.na(True_species), na.rm=TRUE),
+            FN = sum(is.na(species) & !is.na(True_species))) |> 
+  mutate(sums = TP + FP + TN + FN) |> 
+  mutate(missing = 102 - sums) |> 
+  mutate(FN = FN + missing) |> 
+  mutate(sums = TP + FP + TN + FN) |> 
+  select(-c(missing, sums)) |> 
+  group_by(Type, Database) |> 
+  summarise(mean_TP = mean(TP),
+            mean_FP = mean(FP),
+            mean_TN = mean(TN),
+            mean_FN = mean(FN)) |> 
+  rowwise() |> 
+  mutate(recall = recall(mean_TP, mean_FN), 
+         precision = precision(mean_TP, mean_FP),
+         f1 = f1(precision, recall),
+         f0.5 = f0.5(precision, recall),
+         accuracy = accuracy(mean_TP, mean_FP, mean_FN, mean_TN)) 
+sixteen_exclusions_split_averaged <- sixteen_exclusions_split_averaged |> 
+  mutate(Database = case_when ( Database == 'fifty' ~ '50%',
+                               Database == 'seventy' ~ '70%',
+                               Database == 'thirty' ~ '30%',
+                               TRUE ~ Database))
+```
+
+```{r}
+f1_pl <- sixteen_exclusions_split_averaged |> 
+  ggplot(aes(x = Type, y = f1, group = Database, color = Database, fill = Database)) + 
+  geom_point() +
+  geom_line() +
+  theme_minimal()
+```
+
+```{r}
+f0.5_pl <- sixteen_exclusions_split_averaged |> 
+  ggplot(aes(x = Type, y = f0.5, group = Database, color = Database, fill = Database)) + 
+  geom_point() +
+  geom_line() +
+  theme_minimal()
+```
+
+```{r}
+precision_pl <- sixteen_exclusions_split_averaged |> 
+  ggplot(aes(x = Type, y = precision, group = Database, color = Database, fill = Database)) + 
+  geom_point() +
+  geom_line() +
+  theme_minimal()
+```
+
+```{r}
+recall_pl <- sixteen_exclusions_split_averaged |> 
+  ggplot(aes(x = Type, y = recall, group = Database, color = Database, fill = Database)) + 
+  geom_point() +
+  geom_line() +
+  theme_minimal()
+```
+
+```{r fig.height=8}
+(f1_pl / f0.5_pl / precision_pl / recall_pl) +  plot_layout(guides = 'collect')
+
+``` 
+
+Lets zero in on the precision and make boxplots with jitter dots
+
+```{r}
+un_summarised_sixteen <- sixteen_exclusions_split |> left_join(sixteenS_truth, by = c('OTU' = 'True_OTU')) |>
+  separate(True_species, into = c('True_Genus', 'True_Epiteth'), remove = FALSE)|> 
+  mutate(species = na_if(species, 'dropped')) |> 
+  mutate(genus = na_if(genus, 'dropped')) |> 
+
+  mutate(CorrectSpecies = case_when(!is.na(species) & True_species == species ~ 'Correct species',
+                              !is.na(species) & True_species != species ~ 'Incorrect species',
+                              !is.na(genus) & !is.na(True_Genus) & True_Genus == genus ~ 'Correct genus',
+                              !is.na(genus) & !is.na(True_Genus) & True_Genus != genus ~ 'Incorrect genus',
+                              !is.na(family) & True_family == family ~ 'Correct family',
+                              !is.na(family) & True_family != family ~ 'Incorrect family',
+                              TRUE ~ NA)) |> 
+  group_by(Type, Database, after) |>
+  summarise(TP = sum(str_detect(CorrectSpecies, pattern='Correct species'), na.rm=TRUE),
+            FP = sum(str_detect(CorrectSpecies, pattern = 'Incorrect species'), na.rm=TRUE),
+            TN = sum(str_detect(replace_na(CorrectSpecies,'NA'), pattern='NA') & is.na(True_species), na.rm=TRUE),
+            FN = sum(is.na(species) & !is.na(True_species))) |> 
+  mutate(sums = TP + FP + TN + FN) |> 
+  mutate(missing = 112 - sums) |> 
+  mutate(FN = FN + missing) |> 
+  mutate(sums = TP + FP + TN + FN) |> 
+  select(-c(missing, sums)) |> 
+  rowwise() |> 
+  mutate(recall = recall(TP, FN), 
+         precision = precision(TP, FP),
+         f1 = f1(precision, recall),
+         f0.5 = f0.5(precision, recall),
+         accuracy = accuracy(TP, FP, FN, TN)) |> 
+  mutate(Database = case_when ( Database == 'fifty' ~ '50%',
+                               Database == 'seventy' ~ '70%',
+                               Database == 'thirty' ~ '30%',
+                               TRUE ~ Database))
+```
+
+```{r}
+un_summarised_sixteen |> group_by(Type, Database) |> mutate(best = max(mean(precision, na.rm = TRUE))) |>
+  ggplot(aes(x = fct_reorder(Type, best), group = interaction(Type, Database),  color=Database, y = precision)) +
+  geom_boxplot(outlier.shape = NA) +
+  coord_flip() +
+  theme_minimal() +
+  xlab('Type') +
+  ylab('Precision') +
+  geom_point(position = position_jitterdodge(), alpha=0.5)
+```
+```{r}
+un_summarised_sixteen  |> group_by(Type, Database) |> mutate(best = max(mean(f0.5, na.rm=TRUE))) |>
+  ggplot(aes(x = fct_reorder(Type, best), group = interaction(Type, Database), color=Database, y = f0.5)) +
+  geom_boxplot(outlier.shape = NA) + 
+  coord_flip() + 
+  theme_minimal() + 
+  xlab('Type') +
+  ylab('f0.5') +
+  ylim(c(0, 1)) +
+  geom_point(position = position_jitterdodge(), alpha=0.5)
+```
+
+```{r}
+un_summarised_sixteen  |> group_by(Type, Database) |> mutate(best = max(mean(recall))) |>
+  ggplot(aes(x = fct_reorder(Type, best), group = interaction(Type, Database), color=Database, y = recall)) +
+  geom_boxplot(outlier.shape = NA) + 
+  coord_flip() + 
+  theme_minimal() + 
+  xlab('Type') +
+  ylab('f0.5') +
+  ylim(c(0, 1)) +
+  geom_point(position = position_jitterdodge(), alpha=0.5)
+```
+
+```{r}
+un_summarised_sixteen  |> 
+  filter(Type %in% c('BLAST100', 'Kraken_0.0',  'Kraken_0.05', 'Qiime2', 'TNT')) |> 
+  ggplot(aes(x=Database, y = precision, fill=Type)) + #fill=factor(Database, levels=c('30%','50%','70%')))) + 
+  geom_boxplot() +
+  labs(fill='Type') + 
+  ylab('Precision') + 
+  theme_minimal()
+```
+
+```{r}
+false_positives <- un_summarised_sixteen  |> 
+  filter(Type %in% c('BLAST100', 'Kraken_0.0',  'Kraken_0.05', 'Kraken_0.1', 'MMSeqs2', 'TNT')) |> 
+  ggplot(aes(x=Database, y = FP/112*100, fill=Type)) + #fill=factor(Database, levels=c('30%','50%','70%')))) + 
+  geom_boxplot(outlier.shape=NA) +
+  labs(fill='Type') + 
+  ylab('False positives (%)') + 
+  geom_point(aes(color=Type), 
+             position = position_jitterdodge(jitter.width = 0.2), 
+             alpha=0.5,
+             show.legend = FALSE)+
+  theme_minimal()
+false_positives
+```
+
+```{r}
+true_positives <- un_summarised_sixteen  |> 
+  filter(Type %in% c('BLAST100', 'Kraken_0.0',  'Kraken_0.05', 'Kraken_0.1', 'MMSeqs2', 'TNT')) |> 
+  ggplot(aes(x=Database, y = TP/112*100, fill=Type)) + #fill=factor(Database, levels=c('30%','50%','70%')))) + 
+  geom_boxplot(outlier.shape=NA) +
+  labs(fill='Type') + 
+  ylab('True positives (%)') + 
+  geom_point(aes(color=Type), 
+           position = position_jitterdodge(jitter.width = 0.2), 
+           alpha=0.5,
+           show.legend = FALSE)+
+  theme_minimal()
+true_positives
+```
+
+```{r fig.height=6}
+false_positives/ true_positives + plot_layout(guides = 'collect') & coord_flip()
+```
+### Phylogenetic diversity
+
+
+We can also easily calculate alpha diversity across these tools, as alpha diversity is the number of species. We treat classifiers/Types as sites.
+
+
+```{r}
+spec_summarised <- sixteen_exclusions_split |> 
+  group_by(Type, Query, Database, after) |> 
+  mutate(Database = case_when ( Database == 'fifty' ~ '50%',
+                               Database == 'seventy' ~ '70%',
+                               Database == 'thirty' ~ '30%',
+                               TRUE ~ Database)) |> 
+  filter(!is.na(species)) |> 
+  summarise(`Alpha diversity index` = length(unique(species)))
+```
+
+```{r}
+spec_summarised |> 
+  ggplot(aes(x = Type, y = `Alpha diversity index`, fill=Type, group = Type )) + 
+  geom_boxplot() +
+  geom_point(aes(color=Type), 
+           position = position_jitterdodge(jitter.width = 0.2), 
+           alpha=0.5,
+           show.legend = FALSE) + 
+  facet_wrap(~Database) + coord_flip() + theme_minimal()
+```
+
+Let's also do not all of the classifiers
+```{r}
+spec_summarised |> 
+  filter(Type %in% c('BLAST100', 'Kraken_0.0', 'Kraken_0.05',  'Kraken_0.1','MMSeqs2', 'Qiime2', 'TNT')) |> 
+  ggplot(aes(x = Type, y = `Alpha diversity index`, fill=Type, group = Type )) + 
+  geom_boxplot() +
+  geom_point(aes(color=Type), 
+           position = position_jitterdodge(jitter.width = 0.2), 
+           alpha=0.5,
+           show.legend = FALSE) + 
+  facet_wrap(~Database) + coord_flip() + theme_minimal()
+```
+
+```{r}
+a <- spec_summarised |> 
+  filter(Type %in% c('BLAST100', 'BLAST97', 'Kraken_0.0',  'Kraken_0.05', 'Kraken_0.1','MMSeqs2', 'Qiime2', 'TNT')) |> 
+  group_by(Database) |> 
+  arrange(Database) |> 
+  group_map(~aov(`Alpha diversity index` ~ Type, data=.))
+
+names(a) <- spec_summarised |> arrange(Database) |> pull(Database) |> unique() # I don't like this :(
+a
+```
+
+```{r}
+library(agricolae)
+groupslist <- list()
+
+for(key in names(a)) {
+  print(key)
+  groupslist[[key]] <- HSD.test(a[[key]], 'Type')$groups|> 
+    as_tibble(rownames = 'Type') |> 
+    select(-`Alpha diversity index`)
+}
+groups_df <- bind_rows(groupslist, .id='Database')
+```
+
+```{r fig.height=5}
+spec_summarised |> 
+  filter(Type %in% c('BLAST100', 'BLAST97', 'Kraken_0.0', 'Kraken_0.05',  'Kraken_0.1','MMSeqs2', 'Qiime2', 'TNT')) |> 
+  left_join(groups_df, by = c('Database', 'Type')) |> 
+  ggplot(aes(x = Type, y = `Alpha diversity index`, fill=Type, group = Type )) + 
+  geom_boxplot(outlier.shape=NA) +
+  geom_point(aes(color=Type), 
+           position = position_jitterdodge(jitter.width = 0.2), 
+           alpha=0.5,
+           show.legend = FALSE) + 
+  facet_wrap(~Database) + 
+  geom_text(aes(x = Type, y = max(`Alpha diversity index`) + 2, label = groups),
+            #col = 'black',
+            size = 4) +
+  #coord_flip() + 
+  theme_minimal() +
+  theme(axis.text.x = element_text( angle = 90, hjust = 1)) +
+  guides(fill="none")
+```

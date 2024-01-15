@@ -1,0 +1,12 @@
+Database	Marker	Genes	Species	ASVs	zOTU
+Lutjanidae	12S	36	26	24	25
+Lutjanidae	16S	36	26	27	27
+Lutjanidae	CO1	36	26	27	27
+Rottnest	12S	299	94	102	102
+Rottnest	16S	302	97	112	111
+Rottnest	CO1	302	97	117	NA
+GreenGenes	16S	100	100	99	98
+Random	N/A	100	100	100	100
+100 Aus	12S	100	100	99	99
+100 Aus	16S	100	100	99	99
+100 Aus	CO1	100	100	99	99

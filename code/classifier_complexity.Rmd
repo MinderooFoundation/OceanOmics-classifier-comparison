@@ -1,0 +1,23 @@
+---
+title: "Untitled"
+output: html_document
+date: "2023-09-26"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE)
+
+source(here::here('code', 'helpers.R'))
+
+library(tidyverse)
+```
+
+```{r}
+df <- read_tsv(here::here('data/truth/complexity.tsv'), col_names = c('README length', 'Tool'))
+```
+
+```{r}
+df |> ggplot(aes(x=fct_reorder(Tool, `README length`), y =`README length`, fill=`README length`)) + 
+  geom_col() + theme_minimal() + coord_flip() + xlab('Tool')
+```
+

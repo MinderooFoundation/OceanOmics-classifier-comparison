@@ -1,4 +1,4 @@
-![image](https://github.com/user-attachments/assets/08db4aa0-31e9-4df3-b368-be52e535fe58)# OceanOmics classifier comparison scripts
+# OceanOmics classifier comparison scripts
 
 Launch analysis (RStudio): [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/PhilippBayer/OceanOmics-classifier-comparison/HEAD?urlpath=rstudio)  
 

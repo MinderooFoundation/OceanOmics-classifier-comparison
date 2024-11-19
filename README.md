@@ -1,4 +1,4 @@
-# OceanOmics classifier comparison scripts
+![image](https://github.com/user-attachments/assets/08db4aa0-31e9-4df3-b368-be52e535fe58)# OceanOmics classifier comparison scripts
 
 Launch analysis (RStudio): [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/PhilippBayer/OceanOmics-classifier-comparison/HEAD?urlpath=rstudio)  
 
@@ -53,6 +53,15 @@ For reproducibility you'd also have to add the new databases to the `data/databa
 3. run `targets::tar_make()`, 
 
 You should have all results in `results/figures/` and `results/tables/` as targets::tar_make() will rerun the entire analysis and make all figures and tables. All the reports are rendered as html files in `code/` until I figure out how to change that.
+
+## Dependencies
+
+In case renv::restore() fails, here are the main packages and a command to install them at once:
+
+    install.packages(c("agricolae","broom","cowplot","forcats","ggradar",
+        "ggupset", "ggvenn","patchwork","pheatmap","RColorBrewer","tidyverse",
+        "vegan", "targets", "tarchetypes"))
+
 
 ## Other projects to check out
 
